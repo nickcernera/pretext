@@ -9,7 +9,7 @@ describe('Simulation', () => {
   test('player moves toward target', () => {
     const manager = new RoomManager()
     const sim = new Simulation(manager, new StatsTracker())
-    const room = manager.getOrCreateRoom('move-test')
+    const room = manager.getOrCreateRoom('move-test')!
     room.pellets = []
 
     const player = room.addPlayer('p1', '@mover', null)
@@ -33,7 +33,7 @@ describe('Simulation', () => {
   test('bigger player eats smaller on overlap', () => {
     const manager = new RoomManager()
     const sim = new Simulation(manager, new StatsTracker())
-    const room = manager.getOrCreateRoom('eat-test')
+    const room = manager.getOrCreateRoom('eat-test')!
 
     room.pellets = []
 
@@ -60,7 +60,7 @@ describe('Simulation', () => {
   test('equal-size players do not eat each other', () => {
     const manager = new RoomManager()
     const sim = new Simulation(manager, new StatsTracker())
-    const room = manager.getOrCreateRoom('equal-test')
+    const room = manager.getOrCreateRoom('equal-test')!
 
     room.pellets = []
 
@@ -87,7 +87,7 @@ describe('Simulation', () => {
   test('player eats pellets', () => {
     const manager = new RoomManager()
     const sim = new Simulation(manager, new StatsTracker())
-    const room = manager.getOrCreateRoom('pellet-eat-test')
+    const room = manager.getOrCreateRoom('pellet-eat-test')!
 
     room.pellets = [{ id: 0, x: 100, y: 100, word: 'tensor' }]
 
@@ -107,7 +107,7 @@ describe('Simulation', () => {
   test('mass decays over time for large players', () => {
     const manager = new RoomManager()
     const sim = new Simulation(manager, new StatsTracker())
-    const room = manager.getOrCreateRoom('decay-test')
+    const room = manager.getOrCreateRoom('decay-test')!
 
     room.pellets = []
 
@@ -128,7 +128,7 @@ describe('Simulation', () => {
 describe('Splitting', () => {
   test('split creates two cells', () => {
     const manager = new RoomManager()
-    const room = manager.getOrCreateRoom('split-test')
+    const room = manager.getOrCreateRoom('split-test')!
     const player = room.addPlayer('p1', '@splitter', null)
     player.cells[0].mass = 400
     player.targetX = player.cells[0].x + 100
@@ -143,7 +143,7 @@ describe('Splitting', () => {
 
   test('split respects minimum mass', () => {
     const manager = new RoomManager()
-    const room = manager.getOrCreateRoom('split-min-test')
+    const room = manager.getOrCreateRoom('split-min-test')!
     const player = room.addPlayer('p1', '@tiny', null)
     player.cells[0].mass = 100
 
@@ -154,7 +154,7 @@ describe('Splitting', () => {
 
   test('split respects max cells', () => {
     const manager = new RoomManager()
-    const room = manager.getOrCreateRoom('split-max-test')
+    const room = manager.getOrCreateRoom('split-max-test')!
     const player = room.addPlayer('p1', '@maxcells', null)
 
     // Create 16 cells manually
@@ -173,7 +173,7 @@ describe('Splitting', () => {
   test('cells merge after timer expires', () => {
     const manager = new RoomManager()
     const sim = new Simulation(manager, new StatsTracker())
-    const room = manager.getOrCreateRoom('merge-test')
+    const room = manager.getOrCreateRoom('merge-test')!
     room.pellets = []
 
     const player = room.addPlayer('p1', '@merger', null)
@@ -195,7 +195,7 @@ describe('Splitting', () => {
   test('cells do NOT merge before timer expires', () => {
     const manager = new RoomManager()
     const sim = new Simulation(manager, new StatsTracker())
-    const room = manager.getOrCreateRoom('no-merge-test')
+    const room = manager.getOrCreateRoom('no-merge-test')!
     room.pellets = []
 
     const player = room.addPlayer('p1', '@nomerge', null)
@@ -216,7 +216,7 @@ describe('Splitting', () => {
   test('sibling cells do not eat each other', () => {
     const manager = new RoomManager()
     const sim = new Simulation(manager, new StatsTracker())
-    const room = manager.getOrCreateRoom('sibling-test')
+    const room = manager.getOrCreateRoom('sibling-test')!
     room.pellets = []
 
     const player = room.addPlayer('p1', '@siblings', null)

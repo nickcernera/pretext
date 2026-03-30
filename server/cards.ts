@@ -10,21 +10,25 @@ type CardPayload = {
   r: string   // roomCode
 }
 
+const MAX_CARD_PAYLOAD = 2048
+const MAX_VICTIMS = 10
+
 export function decodeCardPayload(encoded: string): { stats: DeathStats; roomCode: string } | null {
+  if (encoded.length > MAX_CARD_PAYLOAD) return null
   try {
     const padded = encoded.replace(/-/g, '+').replace(/_/g, '/')
     const json = atob(padded)
     const data = JSON.parse(json) as CardPayload
     return {
       stats: {
-        handle: String(data.h || ''),
+        handle: String(data.h || '').slice(0, 30),
         timeAlive: Number(data.t) || 0,
         kills: Number(data.k) || 0,
         peakMass: Number(data.p) || 0,
-        victims: Array.isArray(data.v) ? data.v.map(String) : [],
-        killedBy: String(data.b || ''),
+        victims: Array.isArray(data.v) ? data.v.slice(0, MAX_VICTIMS).map(v => String(v).slice(0, 30)) : [],
+        killedBy: String(data.b || '').slice(0, 30),
       },
-      roomCode: String(data.r || ''),
+      roomCode: String(data.r || '').slice(0, 20),
     }
   } catch {
     return null

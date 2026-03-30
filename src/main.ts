@@ -30,7 +30,7 @@ async function main() {
   const params = new URLSearchParams(window.location.search)
   if (params.has('code')) {
     try {
-      await handleCallback(params.get('code')!)
+      await handleCallback(params.get('code')!, params.get('state') || '')
     } catch (e) {
       console.error('OAuth callback failed:', e)
     }

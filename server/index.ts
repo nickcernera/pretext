@@ -1,14 +1,19 @@
-import { WORLD_W, WORLD_H } from '../shared/constants'
+import {
+  WORLD_W, WORLD_H,
+  MAX_HANDLE_LENGTH, MAX_AVATAR_LENGTH, MAX_ROOM_CODE_LENGTH,
+  WS_MAX_PAYLOAD,
+} from '../shared/constants'
 import type { ClientMessage, ServerMessage } from '../shared/protocol'
 import { RoomManager } from './room'
 import type { WsData } from './room'
 import { Simulation, splitPlayer } from './simulation'
 import {
   exchangeCodeForToken, fetchUserInfo, createJWT,
-  getTwitterAuthUrl,
+  getTwitterAuthUrl, verifyJWT,
 } from './auth'
 import { generateShareCard, decodeCardPayload } from './cards'
 import { StatsTracker } from './stats'
+import { httpLimiter, wsLimiter } from './ratelimit'
 
 const PORT = Number(process.env.PORT) || 3001
 
@@ -20,18 +25,66 @@ function generatePlayerId(): string {
   return `p_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`
 }
 
-const CORS_HEADERS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+// --- CORS ---
+
+const ALLOWED_ORIGINS = new Set([
+  'https://pretext-mu.vercel.app',
+])
+
+if (process.env.NODE_ENV !== 'production') {
+  ALLOWED_ORIGINS.add('http://localhost:5173')
+  ALLOWED_ORIGINS.add('http://localhost:4173')
 }
 
-function corsResponse(body: string | null, init?: ResponseInit): Response {
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+}
+
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
+    ...SECURITY_HEADERS,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Stats-Key',
+    'Vary': 'Origin',
+  }
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin
+  }
+  return headers
+}
+
+function corsResponse(body: string | null, init: ResponseInit | undefined, origin: string | null): Response {
   const headers = new Headers(init?.headers)
-  for (const [k, v] of Object.entries(CORS_HEADERS)) {
+  for (const [k, v] of Object.entries(getCorsHeaders(origin))) {
     headers.set(k, v)
   }
   return new Response(body, { ...init, headers })
+}
+
+function getClientIp(req: Request, server: { requestIP: (req: Request) => { address: string } | null }): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || server.requestIP(req)?.address
+    || 'unknown'
+}
+
+function sanitizeHandle(raw: string, verified: boolean): string {
+  let handle = raw.slice(0, MAX_HANDLE_LENGTH).replace(/[\x00-\x1f]/g, '')
+  if (!verified && handle.startsWith('@')) {
+    handle = handle.slice(1)
+  }
+  return handle || 'anon'
+}
+
+function sanitizeAvatar(raw: string): string {
+  const avatar = raw.slice(0, MAX_AVATAR_LENGTH)
+  if (avatar && !avatar.startsWith('https://')) return ''
+  return avatar
+}
+
+function sanitizeRoomCode(raw: string): string {
+  return raw.slice(0, MAX_ROOM_CODE_LENGTH).replace(/[^a-z0-9-]/gi, '')
 }
 
 const server = Bun.serve<WsData>({
@@ -39,22 +92,23 @@ const server = Bun.serve<WsData>({
 
   fetch(req, server) {
     const url = new URL(req.url)
+    const origin = req.headers.get('origin')
 
     // CORS preflight
     if (req.method === 'OPTIONS') {
-      return new Response(null, { headers: CORS_HEADERS })
+      return new Response(null, { headers: getCorsHeaders(origin) })
     }
 
     // Health check
     if (url.pathname === '/health') {
-      return corsResponse('ok')
+      return corsResponse('ok', undefined, origin)
     }
 
     // Room browser
     if (url.pathname === '/rooms' && req.method === 'GET') {
       return corsResponse(JSON.stringify(roomManager.getRoomsResponse()), {
         headers: { 'Content-Type': 'application/json' },
-      })
+      }, origin)
     }
 
     // Stats endpoint
@@ -62,9 +116,14 @@ const server = Bun.serve<WsData>({
       const livePlayers = roomManager.allRooms().reduce(
         (sum, r) => sum + r.realPlayerCount(), 0
       )
-      return corsResponse(JSON.stringify(stats.getStats(livePlayers)), {
+      const result: Record<string, unknown> = stats.getPublicStats(livePlayers)
+      const statsKey = req.headers.get('x-stats-key')
+      if (statsKey && process.env.STATS_API_KEY && statsKey === process.env.STATS_API_KEY) {
+        result.health = stats.getHealthStats()
+      }
+      return corsResponse(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' },
-      })
+      }, origin)
     }
 
     // --- Auth routes ---
@@ -72,21 +131,32 @@ const server = Bun.serve<WsData>({
     // GET /auth/twitter — redirect to X OAuth
     if (url.pathname === '/auth/twitter' && req.method === 'GET') {
       const codeChallenge = url.searchParams.get('code_challenge') || ''
-      const authUrl = getTwitterAuthUrl(codeChallenge)
+      const state = url.searchParams.get('state') || ''
+      if (!state) {
+        return corsResponse(JSON.stringify({ error: 'Missing state parameter' }), {
+          status: 400, headers: { 'Content-Type': 'application/json' },
+        }, origin)
+      }
+      const authUrl = getTwitterAuthUrl(codeChallenge, state)
       return new Response(null, {
         status: 302,
-        headers: { Location: authUrl, ...CORS_HEADERS },
+        headers: { Location: authUrl, ...getCorsHeaders(origin) },
       })
     }
 
     // POST /auth/callback — exchange code for token, fetch user, return JWT
     if (url.pathname === '/auth/callback' && req.method === 'POST') {
+      const ip = getClientIp(req, server)
+      if (!httpLimiter.check(ip)) {
+        return corsResponse(JSON.stringify({ error: 'Too many requests' }), {
+          status: 429, headers: { 'Content-Type': 'application/json' },
+        }, origin)
+      }
       return (async () => {
         try {
           const body = await req.json()
           const { code, codeVerifier } = body as { code: string; codeVerifier: string }
           const accessToken = await exchangeCodeForToken(code, codeVerifier)
-          // Free tier can't fetch profile — try but fall back to placeholder
           let userInfo: import('./auth').UserInfo
           try {
             userInfo = await fetchUserInfo(accessToken)
@@ -97,12 +167,13 @@ const server = Bun.serve<WsData>({
           const jwt = createJWT(userInfo)
           return corsResponse(JSON.stringify({ jwt, user: userInfo }), {
             headers: { 'Content-Type': 'application/json' },
-          })
+          }, origin)
         } catch (e: any) {
-          return corsResponse(JSON.stringify({ error: e.message }), {
+          console.error('Auth callback error:', e.message)
+          return corsResponse(JSON.stringify({ error: 'Authentication failed' }), {
             status: 400,
             headers: { 'Content-Type': 'application/json' },
-          })
+          }, origin)
         }
       })()
     }
@@ -114,7 +185,7 @@ const server = Bun.serve<WsData>({
       const encoded = url.pathname.slice(6)
       const decoded = decodeCardPayload(encoded)
       if (!decoded) {
-        return corsResponse('Invalid card data', { status: 400 })
+        return corsResponse('Invalid card data', { status: 400 }, origin)
       }
       const svg = generateShareCard(decoded.stats, decoded.roomCode)
       return corsResponse(svg, {
@@ -122,11 +193,19 @@ const server = Bun.serve<WsData>({
           'Content-Type': 'image/svg+xml',
           'Cache-Control': 'public, max-age=86400',
         },
-      })
+      }, origin)
     }
 
     // WebSocket upgrade
     if (url.pathname === '/ws') {
+      const ip = getClientIp(req, server)
+      if (!wsLimiter.check(ip)) {
+        return new Response('Too many connections', { status: 429 })
+      }
+      const wsOrigin = req.headers.get('origin')
+      if (wsOrigin && !ALLOWED_ORIGINS.has(wsOrigin)) {
+        return new Response('Origin not allowed', { status: 403 })
+      }
       const upgraded = server.upgrade(req, {
         data: { playerId: '', roomCode: '' },
       })
@@ -134,10 +213,13 @@ const server = Bun.serve<WsData>({
       return new Response('WebSocket upgrade failed', { status: 400 })
     }
 
-    return corsResponse('Not found', { status: 404 })
+    return corsResponse('Not found', { status: 404 }, origin)
   },
 
   websocket: {
+    maxPayloadLength: WS_MAX_PAYLOAD,
+    idleTimeout: 120,
+
     open(ws) {
       stats.onWsOpen()
     },
@@ -153,14 +235,45 @@ const server = Bun.serve<WsData>({
 
       switch (msg.t) {
         case 'join': {
+          // Ghost cleanup: remove old player if re-joining
+          if (ws.data.playerId) {
+            const oldRoom = roomManager.getRoom(ws.data.roomCode)
+            if (oldRoom) {
+              oldRoom.removePlayer(ws.data.playerId)
+              oldRoom.removeSpectator(ws)
+            }
+          }
+
           const playerId = generatePlayerId()
-          const roomCode = msg.room || ''
-          const handle = msg.guest || '@anon'
-          const avatar = msg.avatar || ''
+          const roomCode = sanitizeRoomCode(msg.room || '')
+
+          // JWT verification
+          let verified = false
+          let handle: string
+          let avatar: string
+          if (msg.token) {
+            const user = verifyJWT(msg.token)
+            if (user) {
+              verified = true
+              handle = user.handle
+              avatar = sanitizeAvatar(user.avatar)
+            } else {
+              handle = sanitizeHandle(msg.guest || 'anon', false)
+              avatar = sanitizeAvatar(msg.avatar || '')
+            }
+          } else {
+            handle = sanitizeHandle(msg.guest || 'anon', false)
+            avatar = sanitizeAvatar(msg.avatar || '')
+          }
 
           const room = roomCode
             ? roomManager.getOrCreateRoom(roomCode)
             : roomManager.getPublicRoom()
+
+          if (!room) {
+            ws.send(JSON.stringify({ t: 'error', msg: 'Server is at capacity' } satisfies ServerMessage))
+            return
+          }
 
           ws.data.playerId = playerId
           ws.data.roomCode = room.code
@@ -189,12 +302,14 @@ const server = Bun.serve<WsData>({
         }
 
         case 'input': {
+          if (typeof msg.x !== 'number' || typeof msg.y !== 'number') return
+          if (!Number.isFinite(msg.x) || !Number.isFinite(msg.y)) return
           const room = roomManager.getRoom(ws.data.roomCode)
           if (!room) return
           const player = room.players.get(ws.data.playerId)
           if (!player) return
-          player.targetX = msg.x
-          player.targetY = msg.y
+          player.targetX = Math.max(0, Math.min(WORLD_W, msg.x))
+          player.targetY = Math.max(0, Math.min(WORLD_H, msg.y))
           break
         }
 
@@ -208,12 +323,26 @@ const server = Bun.serve<WsData>({
         }
 
         case 'spectate': {
-          const roomCode = msg.room || ''
+          // Ghost cleanup
+          if (ws.data.playerId) {
+            const oldRoom = roomManager.getRoom(ws.data.roomCode)
+            if (oldRoom) {
+              oldRoom.removePlayer(ws.data.playerId)
+              oldRoom.removeSpectator(ws)
+            }
+          }
+
+          const roomCode = sanitizeRoomCode(msg.room || '')
           const room = roomCode
-            ? roomManager.getRoom(roomCode) || roomManager.getPublicRoom()
+            ? (roomManager.getRoom(roomCode) || roomManager.getPublicRoom())
             : roomManager.getPublicRoom()
 
-          ws.data.playerId = ''  // no player
+          if (!room) {
+            ws.send(JSON.stringify({ t: 'error', msg: 'Server is at capacity' } satisfies ServerMessage))
+            return
+          }
+
+          ws.data.playerId = ''
           ws.data.roomCode = room.code
           room.addSpectator(ws)
 

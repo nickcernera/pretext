@@ -7,6 +7,9 @@ COPY server/ ./server/
 
 RUN bun install --production
 
+RUN adduser --disabled-password --gecos "" appuser
+USER appuser
+
 EXPOSE 3001
 
 CMD ["bun", "run", "server/index.ts"]

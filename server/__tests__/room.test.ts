@@ -42,7 +42,8 @@ describe('RoomManager', () => {
   test('getOrCreateRoom creates new room', () => {
     const manager = new RoomManager()
     const room = manager.getOrCreateRoom('my-room')
-    expect(room.code).toBe('my-room')
+    expect(room).not.toBeNull()
+    expect(room!.code).toBe('my-room')
   })
 
   test('getOrCreateRoom returns existing room', () => {
@@ -52,17 +53,25 @@ describe('RoomManager', () => {
     expect(room1).toBe(room2)
   })
 
+  test('getOrCreateRoom returns null at capacity', () => {
+    const manager = new RoomManager()
+    for (let i = 0; i < 200; i++) {
+      expect(manager.getOrCreateRoom(`room-${i}`)).not.toBeNull()
+    }
+    expect(manager.getOrCreateRoom('one-too-many')).toBeNull()
+  })
+
   test('getPublicRoom creates room with space', () => {
     const manager = new RoomManager()
     const room = manager.getPublicRoom()
-    expect(room).toBeDefined()
-    expect(room.code).toBeTruthy()
+    expect(room).not.toBeNull()
+    expect(room!.code).toBeTruthy()
   })
 
   test('getPublicRoom reuses room with space', () => {
     const manager = new RoomManager()
-    const room1 = manager.getPublicRoom()
-    const room2 = manager.getPublicRoom()
+    const room1 = manager.getPublicRoom()!
+    const room2 = manager.getPublicRoom()!
     expect(room1.code).toBe(room2.code)
   })
 })

@@ -25,12 +25,24 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 export async function startXAuth(): Promise<void> {
   const verifier = generateCodeVerifier()
   const challenge = await generateCodeChallenge(verifier)
+  const state = crypto.randomUUID()
   sessionStorage.setItem('oauth_verifier', verifier)
-  window.location.href = `${SERVER_URL}/auth/twitter?code_challenge=${challenge}`
+  sessionStorage.setItem('oauth_state', state)
+  window.location.href = `${SERVER_URL}/auth/twitter?code_challenge=${challenge}&state=${state}`
 }
 
-export async function handleCallback(code: string): Promise<AuthUser> {
+export async function handleCallback(code: string, returnedState: string): Promise<AuthUser> {
+  const expectedState = sessionStorage.getItem('oauth_state')
+  if (!expectedState || returnedState !== expectedState) {
+    sessionStorage.removeItem('oauth_state')
+    sessionStorage.removeItem('oauth_verifier')
+    throw new Error('Invalid OAuth state — possible CSRF attack')
+  }
+  sessionStorage.removeItem('oauth_state')
+
   const verifier = sessionStorage.getItem('oauth_verifier') || ''
+  sessionStorage.removeItem('oauth_verifier')
+
   const res = await fetch(`${SERVER_URL}/auth/callback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
