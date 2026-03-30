@@ -1,7 +1,7 @@
 import { drawBackground } from '../game/background'
 import { BLOB_FONT_FAMILY, UI_FONT_FAMILY, RAIN_COLOR } from '@shared/constants'
 import type { DeathStats } from '@shared/protocol'
-import { buildShareUrl } from '../share'
+import { buildShareUrl, generateShareCard } from '../share'
 
 export class DeathScreen {
   private canvas: HTMLCanvasElement
@@ -15,10 +15,10 @@ export class DeathScreen {
     this.ctx = canvas.getContext('2d')!
   }
 
-  show(stats: DeathStats, roomCode: string): Promise<'play' | 'landing'> {
+  show(stats: DeathStats, roomCode: string, serverUrl: string): Promise<'play' | 'landing'> {
     return new Promise((resolve) => {
       this.startBackground()
-      this.buildUI(stats, roomCode, resolve)
+      this.buildUI(stats, roomCode, serverUrl, resolve)
     })
   }
 
@@ -38,7 +38,7 @@ export class DeathScreen {
     loop()
   }
 
-  private buildUI(stats: DeathStats, roomCode: string, resolve: (action: 'play' | 'landing') => void) {
+  private buildUI(stats: DeathStats, roomCode: string, serverUrl: string, resolve: (action: 'play' | 'landing') => void) {
     const cleanup = () => {
       if (this.rafId) {
         cancelAnimationFrame(this.rafId)
@@ -136,9 +136,25 @@ export class DeathScreen {
       container.appendChild(victimsList)
     }
 
+    // Card preview area (above buttons)
+    const cardPreview = document.createElement('div')
+    cardPreview.style.cssText = 'margin-bottom: 20px; opacity: 0; transition: opacity 0.3s;'
+    container.appendChild(cardPreview)
+
+    // Generate card async
+    generateShareCard(stats, roomCode, serverUrl).then(cardUrl => {
+      if (cardUrl) {
+        const img = document.createElement('img')
+        img.src = cardUrl
+        img.style.cssText = 'width: 400px; max-width: 90vw; border-radius: 8px; border: 1px solid #3a5a4a;'
+        cardPreview.appendChild(img)
+        cardPreview.style.opacity = '1'
+      }
+    })
+
     // Buttons
     const btnRow = document.createElement('div')
-    btnRow.style.cssText = 'display: flex; gap: 12px; margin-bottom: 20px;'
+    btnRow.style.cssText = 'display: flex; gap: 12px; margin-bottom: 12px;'
 
     const makeButton = (text: string, primary: boolean): HTMLButtonElement => {
       const btn = document.createElement('button')
@@ -160,21 +176,37 @@ export class DeathScreen {
       return btn
     }
 
-    const playAgainBtn = makeButton('Play Again', true)
-    playAgainBtn.addEventListener('click', () => {
-      cleanup()
-      resolve('play')
-    })
-    btnRow.appendChild(playAgainBtn)
-
-    const shareBtn = makeButton('Share on X', false)
+    const shareBtn = makeButton('Share on X', true)
     shareBtn.addEventListener('click', () => {
       const url = buildShareUrl('death', stats, roomCode)
       window.open(url, '_blank', 'noopener')
     })
     btnRow.appendChild(shareBtn)
 
+    const playAgainBtn = makeButton('Play Again', false)
+    playAgainBtn.addEventListener('click', () => {
+      cleanup()
+      resolve('play')
+    })
+    btnRow.appendChild(playAgainBtn)
+
     container.appendChild(btnRow)
+
+    // Challenge killer button
+    const challengeBtn = document.createElement('button')
+    challengeBtn.textContent = `Challenge ${stats.killedBy}`
+    challengeBtn.style.cssText = `
+      font-family: ${UI_FONT_FAMILY}; font-size: 12px; color: #4a7a5a;
+      background: none; border: 1px solid #2a3a2a; border-radius: 4px;
+      cursor: pointer; padding: 8px 20px; margin-bottom: 12px; transition: all 0.15s;
+    `
+    challengeBtn.addEventListener('mouseenter', () => { challengeBtn.style.borderColor = '#3a5a4a'; challengeBtn.style.color = '#d0ffe0' })
+    challengeBtn.addEventListener('mouseleave', () => { challengeBtn.style.borderColor = '#2a3a2a'; challengeBtn.style.color = '#4a7a5a' })
+    challengeBtn.addEventListener('click', () => {
+      const url = buildShareUrl('challenge', stats, roomCode)
+      window.open(url, '_blank', 'noopener')
+    })
+    container.appendChild(challengeBtn)
 
     // Back to menu
     const menuBtn = document.createElement('button')
