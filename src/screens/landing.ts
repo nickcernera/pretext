@@ -2,6 +2,7 @@ import { prepareWithSegments, layoutNextLine, type PreparedTextWithSegments, typ
 import { drawBackground } from '../game/background'
 import { BLOB_FONT_FAMILY, UI_FONT_FAMILY, BG_COLOR, RAIN_COLOR } from '@shared/constants'
 import { getStoredUser, startXAuth, logout } from '../auth'
+import { cursor as customCursor } from '../game/cursor'
 
 const SEA_FONT = `12px ${UI_FONT_FAMILY}`
 const SEA_LINE_HEIGHT = 18
@@ -16,6 +17,22 @@ const SEA_WORDS = [
   'heap', 'stack', 'queue', 'btree', 'hashmap',
   '∂f/∂x', '∫dx', 'Σ', 'λ', '∞', '@pretext',
 ]
+
+type Span = { left: number; right: number; align: 'left' | 'right' }
+
+/** Split spans around a horizontal exclusion range [exclL, exclR] */
+function excludeRange(spans: Span[], exclL: number, exclR: number): Span[] {
+  const next: Span[] = []
+  for (const span of spans) {
+    if (exclR <= span.left || exclL >= span.right) {
+      next.push(span)
+    } else {
+      if (exclL > span.left + 10) next.push({ left: span.left, right: exclL, align: 'right' })
+      if (exclR < span.right - 10) next.push({ left: exclR, right: span.right, align: 'left' })
+    }
+  }
+  return next
+}
 
 export type LandingResult =
   | { action: 'play'; handle: string; token?: string; room?: string }
@@ -55,8 +72,7 @@ export class LandingScreen {
   private getUIExclusionRect(): { x: number; y: number; w: number; h: number } | null {
     if (!this.panel) return null
     const rect = this.panel.getBoundingClientRect()
-    // Add padding around the UI panel
-    const pad = 30
+    const pad = 8
     return {
       x: rect.left - pad,
       y: rect.top - pad,
@@ -96,22 +112,32 @@ export class LandingScreen {
       const lineTop = y
       const lineBottom = y + SEA_LINE_HEIGHT
 
-      let spans = [{ left: 8, right: sw - 8 }]
+      let spans: Span[] = [{ left: 8, right: sw - 8, align: 'left' }]
 
-      // Exclude the UI panel area
+      // Exclude the UI panel area (rounded rect)
       if (exclusion) {
-        if (lineBottom > exclusion.y && lineTop < exclusion.y + exclusion.h) {
-          const next: typeof spans = []
-          for (const span of spans) {
-            if (exclusion.x + exclusion.w <= span.left || exclusion.x >= span.right) {
-              next.push(span)
-            } else {
-              if (exclusion.x > span.left + 20) next.push({ left: span.left, right: exclusion.x })
-              if (exclusion.x + exclusion.w < span.right - 20) next.push({ left: exclusion.x + exclusion.w, right: span.right })
-            }
+        const midY = (lineTop + lineBottom) / 2
+        if (midY > exclusion.y && midY < exclusion.y + exclusion.h) {
+          const cr = 48
+          let inset = 0
+          if (midY < exclusion.y + cr) {
+            const dy = exclusion.y + cr - midY
+            inset = cr - Math.sqrt(Math.max(0, cr * cr - dy * dy))
+          } else if (midY > exclusion.y + exclusion.h - cr) {
+            const dy = midY - (exclusion.y + exclusion.h - cr)
+            inset = cr - Math.sqrt(Math.max(0, cr * cr - dy * dy))
           }
-          spans = next
+          spans = excludeRange(spans, exclusion.x + inset, exclusion.x + exclusion.w - inset)
         }
+      }
+
+      // Exclude area around cursor (circle)
+      const cursorR = 30
+      const midLineY = (lineTop + lineBottom) / 2
+      const cdy = midLineY - customCursor.y
+      if (Math.abs(cdy) < cursorR) {
+        const halfW = Math.sqrt(cursorR * cursorR - cdy * cdy)
+        spans = excludeRange(spans, customCursor.x - halfW, customCursor.x + halfW)
       }
 
       for (const span of spans) {
@@ -124,24 +150,39 @@ export class LandingScreen {
           break
         }
 
-        // Brighter near the UI exclusion
-        let alpha = 0.18
+        const midX = (span.left + span.right) / 2
+        const midY = (lineTop + lineBottom) / 2
+
+        // Brighter near the UI exclusion — min distance between span rect and panel rect
+        let alpha = 0.08
         if (exclusion) {
-          const midX = (span.left + span.right) / 2
-          const midY = (lineTop + lineBottom) / 2
-          const cx = exclusion.x + exclusion.w / 2
-          const cy = exclusion.y + exclusion.h / 2
-          const dist = Math.sqrt((midX - cx) ** 2 + (midY - cy) ** 2)
-          const halo = Math.max(exclusion.w, exclusion.h)
+          const dx = Math.max(0, exclusion.x - span.right, span.left - (exclusion.x + exclusion.w))
+          const dy = Math.max(0, exclusion.y - lineBottom, lineTop - (exclusion.y + exclusion.h))
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          const halo = 200
           if (dist < halo) {
             const proximity = 1 - dist / halo
-            alpha = Math.max(alpha, 0.18 + proximity * 0.3)
+            alpha = Math.max(alpha, 0.08 + proximity * 0.22)
           }
+        }
+
+        // Spotlight near cursor — distance to nearest point on the text line
+        const nearX = Math.max(span.left, Math.min(span.right, customCursor.x))
+        const nearY = Math.max(lineTop, Math.min(lineBottom, customCursor.y))
+        const cursorDist = Math.sqrt((nearX - customCursor.x) ** 2 + (nearY - customCursor.y) ** 2)
+        if (cursorDist < 150) {
+          const proximity = 1 - cursorDist / 150
+          alpha = Math.max(alpha, 0.1 + proximity * 0.6)
         }
 
         ctx.globalAlpha = alpha
         ctx.fillStyle = RAIN_COLOR
-        ctx.fillText(line.text, span.left, y)
+        if (span.align === 'right') {
+          const textW = ctx.measureText(line.text).width
+          ctx.fillText(line.text, span.right - textW, y)
+        } else {
+          ctx.fillText(line.text, span.left, y)
+        }
         cursor = line.end
       }
 
