@@ -27,6 +27,7 @@ export class LandingScreen {
   private rafId = 0
   private lastTime = 0
   private container: HTMLDivElement | null = null
+  private panel: HTMLDivElement | null = null
   private seaPrepared: PreparedTextWithSegments | null = null
 
   constructor(canvas: HTMLCanvasElement) {
@@ -52,8 +53,8 @@ export class LandingScreen {
   }
 
   private getUIExclusionRect(): { x: number; y: number; w: number; h: number } | null {
-    if (!this.container) return null
-    const rect = this.container.getBoundingClientRect()
+    if (!this.panel) return null
+    const rect = this.panel.getBoundingClientRect()
     // Add padding around the UI panel
     const pad = 30
     return {
@@ -171,8 +172,9 @@ export class LandingScreen {
       font-family: ${UI_FONT_FAMILY}; pointer-events: none;
     `
 
-    // Inner panel — pointer events only on this
+    // Inner panel — pointer events only on this, also used for sea exclusion
     const panel = document.createElement('div')
+    this.panel = panel
     panel.style.cssText = `
       display: flex; flex-direction: column; align-items: center;
       pointer-events: auto; padding: 40px 60px; border-radius: 8px;
