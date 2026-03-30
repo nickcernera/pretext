@@ -75,13 +75,17 @@ export class Simulation {
 
   start() {
     this.interval = setInterval(() => {
+      const tickStart = performance.now()
       const dt = TICK_MS / 1000
-      for (const room of this.roomManager.allRooms()) {
+      const rooms = this.roomManager.allRooms()
+      this.stats.roomCount = rooms.length
+      for (const room of rooms) {
         fillBots(room)
         this.tickRoom(room, dt)
         this.broadcastState(room)
         this.broadcastLeaderboard(room)
       }
+      this.stats.onTick(performance.now() - tickStart)
     }, TICK_MS)
   }
 

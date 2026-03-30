@@ -156,7 +156,7 @@ const server = Bun.serve<WsData>({
 
   websocket: {
     open(ws) {
-      // Connection opened, wait for join message
+      stats.onWsOpen()
     },
 
     message(ws, message) {
@@ -251,6 +251,7 @@ const server = Bun.serve<WsData>({
     },
 
     close(ws) {
+      stats.onWsClose()
       const room = roomManager.getRoom(ws.data.roomCode)
       if (room) {
         const player = room.players.get(ws.data.playerId)
