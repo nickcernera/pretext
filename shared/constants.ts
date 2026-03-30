@@ -38,6 +38,13 @@ export const BOT_FILL_THRESHOLD = 8
 export const ROOM_IDLE_TIMEOUT = 5 * 60_000
 export const LEADERBOARD_INTERVAL = 10 * 60_000
 
+// Security
+export const MAX_ROOMS = 200
+export const MAX_HANDLE_LENGTH = 30
+export const MAX_AVATAR_LENGTH = 256
+export const MAX_ROOM_CODE_LENGTH = 20
+export const WS_MAX_PAYLOAD = 1024
+
 // Visual
 export const BLOB_FONT_FAMILY = '"Space Grotesk", system-ui, sans-serif'
 export const UI_FONT_FAMILY = '"Space Mono", monospace'
