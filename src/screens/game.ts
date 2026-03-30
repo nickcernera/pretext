@@ -16,7 +16,7 @@ import {
   type PlayerState, type PelletState, type CellState, type DeathStats, type LeaderboardEntry,
 } from '@shared/protocol'
 import { triggerSpasm } from '../game/blob'
-import { PELLET_WORDS } from '@shared/words'
+import { createPelletBag } from '@shared/words'
 
 const BOT_HANDLES = [
   '@synthwave', '@tensorcat', '@pixeldrift', '@neuralnet',
@@ -113,6 +113,7 @@ export class GameScreen {
   private bots: Bot[] = []
   private pellets: Pellet[] = []
   private nextPelletId = 0
+  private nextPelletWord = createPelletBag()
   private kills = 0
   private peakMass: number = MIN_MASS
   private victims: string[] = []
@@ -1004,7 +1005,7 @@ export class GameScreen {
       id: this.nextPelletId++,
       x: Math.random() * WORLD_W,
       y: Math.random() * WORLD_H,
-      word: PELLET_WORDS[Math.floor(Math.random() * PELLET_WORDS.length)],
+      word: this.nextPelletWord(),
     }
   }
 }

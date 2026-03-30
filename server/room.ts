@@ -9,7 +9,7 @@ import {
   MIN_MASS,
 } from '../shared/constants'
 import { handleToColor } from '../shared/protocol'
-import { PELLET_WORDS } from '../shared/words'
+import { createPelletBag } from '../shared/words'
 import type { PelletState, LeaderboardEntry, RoomInfo, ActivityEvent, RoomsResponse } from '../shared/protocol'
 
 export type ServerCell = {
@@ -68,6 +68,7 @@ export class Room {
   pellets: PelletState[] = []
   private nextPelletId = 0
   private lastSnapshotAt = 0
+  private nextPelletWord = createPelletBag()
 
   constructor(code: string) {
     this.code = code
@@ -83,7 +84,7 @@ export class Room {
   private static readonly MIN_PELLET_DIST = 120
 
   spawnPellet(): PelletState {
-    const word = PELLET_WORDS[Math.floor(Math.random() * PELLET_WORDS.length)]
+    const word = this.nextPelletWord()
     let x: number, y: number
     let attempts = 0
     do {

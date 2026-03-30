@@ -132,6 +132,25 @@ export const PELLET_WORDS: readonly string[] = [
   ...WORD_CORPUS.startup,
 ]
 
+/**
+ * Shuffle-bag pellet word picker — cycles through all words before repeating,
+ * eliminating nearby duplicates.
+ */
+export function createPelletBag(): () => string {
+  let bag: string[] = []
+  return () => {
+    if (bag.length === 0) {
+      bag = [...PELLET_WORDS]
+      // Fisher-Yates shuffle
+      for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[bag[i], bag[j]] = [bag[j], bag[i]]
+      }
+    }
+    return bag.pop()!
+  }
+}
+
 /** Sea/rain words — full corpus with glyphs weighted 3x for visual texture */
 export const SEA_WORDS: readonly string[] = [
   ...ALL_WORDS,
