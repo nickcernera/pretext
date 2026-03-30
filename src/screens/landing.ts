@@ -260,7 +260,7 @@ export class LandingScreen {
     `
     panel.appendChild(playerCountEl)
 
-    const cleanup = () => {
+    let cleanup = () => {
       if (this.rafId) { cancelAnimationFrame(this.rafId); this.rafId = 0 }
       if (this.activityInterval) { clearInterval(this.activityInterval); this.activityInterval = null }
       this.footer = null
@@ -292,8 +292,13 @@ export class LandingScreen {
 
     // --- Auth row ---
     if (user) {
-      const identity = document.createElement('div')
-      identity.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:16px;'
+      const identityWrap = document.createElement('div')
+      identityWrap.style.cssText = 'position:relative;margin-bottom:16px;'
+
+      const identity = document.createElement('button')
+      identity.style.cssText = `display:flex;align-items:center;gap:10px;background:none;border:1px solid transparent;border-radius:6px;padding:6px 10px;cursor:pointer;transition:all 0.15s;`
+      identity.addEventListener('mouseenter', () => { identity.style.borderColor = '#2a3a2a'; identity.style.background = 'rgba(0,255,65,0.03)' })
+      identity.addEventListener('mouseleave', () => { if (!dropdownOpen) { identity.style.borderColor = 'transparent'; identity.style.background = 'none' } })
 
       const avatar = document.createElement('img')
       avatar.src = user.avatar
@@ -303,6 +308,7 @@ export class LandingScreen {
       identity.appendChild(avatar)
 
       const nameCol = document.createElement('div')
+      nameCol.style.cssText = 'text-align:left;'
       const displayName = document.createElement('div')
       displayName.textContent = user.displayName
       displayName.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:13px;color:#d0ffe0;font-weight:600;`
@@ -313,14 +319,65 @@ export class LandingScreen {
       handle.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:11px;color:#4a7a5a;`
       nameCol.appendChild(handle)
 
-      const signOutLink = document.createElement('button')
-      signOutLink.textContent = 'sign out'
-      signOutLink.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:10px;color:#3a5a4a;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;margin-left:auto;`
-      signOutLink.addEventListener('click', () => { logout(); cleanup(); const fresh = new LandingScreen(this.canvas, this.serverUrl); fresh.show().then(resolve) })
-
       identity.appendChild(nameCol)
-      identity.appendChild(signOutLink)
-      panel.appendChild(identity)
+
+      // Chevron
+      const chevron = document.createElement('span')
+      chevron.textContent = '\u25BE'
+      chevron.style.cssText = `font-size:10px;color:#3a5a4a;margin-left:4px;transition:transform 0.15s;`
+      identity.appendChild(chevron)
+
+      // Dropdown
+      const dropdown = document.createElement('div')
+      dropdown.style.cssText = `
+        position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;
+        background:#0a150e;border:1px solid #2a3a2a;border-radius:6px;
+        padding:4px;min-width:140px;opacity:0;pointer-events:none;
+        transition:opacity 0.12s,transform 0.12s;transform:translateX(-50%) translateY(-4px);
+        z-index:20;
+      `
+      let dropdownOpen = false
+
+      const signOutBtn = document.createElement('button')
+      signOutBtn.textContent = 'Sign out'
+      signOutBtn.style.cssText = `
+        font-family:${UI_FONT_FAMILY};font-size:12px;color:#4a7a5a;
+        background:none;border:none;cursor:pointer;padding:8px 12px;
+        width:100%;text-align:left;border-radius:4px;transition:all 0.12s;
+      `
+      signOutBtn.addEventListener('mouseenter', () => { signOutBtn.style.background = 'rgba(0,255,65,0.06)'; signOutBtn.style.color = '#d0ffe0' })
+      signOutBtn.addEventListener('mouseleave', () => { signOutBtn.style.background = 'none'; signOutBtn.style.color = '#4a7a5a' })
+      signOutBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        logout(); cleanup(); const fresh = new LandingScreen(this.canvas, this.serverUrl); fresh.show().then(resolve)
+      })
+      dropdown.appendChild(signOutBtn)
+
+      const toggleDropdown = (open: boolean) => {
+        dropdownOpen = open
+        dropdown.style.opacity = open ? '1' : '0'
+        dropdown.style.pointerEvents = open ? 'auto' : 'none'
+        dropdown.style.transform = open ? 'translateX(-50%) translateY(0)' : 'translateX(-50%) translateY(-4px)'
+        chevron.style.transform = open ? 'rotate(180deg)' : 'rotate(0)'
+        identity.style.borderColor = open ? '#2a3a2a' : 'transparent'
+        identity.style.background = open ? 'rgba(0,255,65,0.03)' : 'none'
+      }
+
+      identity.addEventListener('click', () => toggleDropdown(!dropdownOpen))
+
+      // Close on outside click
+      const onDocClick = (e: MouseEvent) => {
+        if (dropdownOpen && !identityWrap.contains(e.target as Node)) toggleDropdown(false)
+      }
+      document.addEventListener('click', onDocClick)
+
+      // Store cleanup ref so we remove the listener when the screen tears down
+      const origCleanup = cleanup
+      cleanup = () => { document.removeEventListener('click', onDocClick); origCleanup() }
+
+      identityWrap.appendChild(identity)
+      identityWrap.appendChild(dropdown)
+      panel.appendChild(identityWrap)
     }
 
     // --- Main CTAs ---

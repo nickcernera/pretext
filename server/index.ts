@@ -29,6 +29,8 @@ function generatePlayerId(): string {
 
 const ALLOWED_ORIGINS = new Set([
   'https://pretext-mu.vercel.app',
+  'https://pretextarena.io',
+  'https://www.pretextarena.io',
 ])
 
 if (process.env.NODE_ENV !== 'production') {
