@@ -1,4 +1,4 @@
-import { prepareWithSegments, layoutNextLine, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
+import { prepareWithSegments, layoutNextLine, walkLineRanges, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
 import { UI_FONT_FAMILY, RAIN_COLOR, WORLD_W, WORLD_H } from '@shared/constants'
 import { SEA_WORDS as SEED_WORDS } from '@shared/words'
 
@@ -59,30 +59,34 @@ export class MatrixRain {
 
   /**
    * Pre-lay out the entire world grid to cache cursor positions per line.
-   * This runs once after corpus rebuild. Each line spans the full world width.
+   * Uses walkLineRanges (no string allocation) instead of layoutNextLine.
    * We store the cursor at the START of each line so we can jump to any visible row.
    */
   private precomputeLineCursors() {
     if (!this.prepared || this.fullLayoutDone) return
 
     const totalLines = Math.ceil(WORLD_H / LINE_HEIGHT)
-    let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
-
     this.lineStartCursors = []
-    for (let i = 0; i < totalLines; i++) {
-      this.lineStartCursors.push({ ...cursor })
-      // Advance cursor by laying out one full-width line
-      const line = layoutNextLine(this.prepared, cursor, WORLD_W - MARGIN * 2)
-      if (!line) {
-        // Wrap corpus
-        cursor = { segmentIndex: 0, graphemeIndex: 0 }
-        this.lineStartCursors[i] = { ...cursor }
-        const line2 = layoutNextLine(this.prepared, cursor, WORLD_W - MARGIN * 2)
-        if (line2) cursor = line2.end
-      } else {
-        cursor = line.end
+
+    // walkLineRanges iterates all lines without constructing text strings —
+    // we only need the cursor positions for random-access during rendering
+    walkLineRanges(this.prepared, WORLD_W - MARGIN * 2, (line) => {
+      if (this.lineStartCursors.length < totalLines) {
+        this.lineStartCursors.push({ ...line.start })
       }
+    })
+
+    // If corpus was shorter than needed, wrap from beginning to fill remaining rows
+    while (this.lineStartCursors.length < totalLines) {
+      const before = this.lineStartCursors.length
+      walkLineRanges(this.prepared!, WORLD_W - MARGIN * 2, (line) => {
+        if (this.lineStartCursors.length < totalLines) {
+          this.lineStartCursors.push({ ...line.start })
+        }
+      })
+      if (this.lineStartCursors.length === before) break // prevent infinite loop on empty corpus
     }
+
     this.fullLayoutDone = true
   }
 
