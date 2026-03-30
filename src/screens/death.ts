@@ -1,5 +1,4 @@
 import { drawBackground } from '../game/background'
-import { MatrixRain } from '../game/rain'
 import { BLOB_FONT_FAMILY, UI_FONT_FAMILY, RAIN_COLOR } from '@shared/constants'
 import type { DeathStats } from '@shared/protocol'
 import { buildShareUrl } from '../share'
@@ -7,7 +6,6 @@ import { buildShareUrl } from '../share'
 export class DeathScreen {
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
-  private rain: MatrixRain
   private rafId = 0
   private lastTime = 0
   private container: HTMLDivElement | null = null
@@ -15,8 +13,6 @@ export class DeathScreen {
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
     this.ctx = canvas.getContext('2d')!
-    this.rain = new MatrixRain()
-    this.rain.init(window.innerWidth, window.innerHeight)
   }
 
   show(stats: DeathStats, roomCode: string): Promise<'play' | 'landing'> {
@@ -36,8 +32,6 @@ export class DeathScreen {
       const sw = window.innerWidth
       const sh = window.innerHeight
       drawBackground(this.ctx, sw, sh)
-      this.rain.update(dt)
-      this.rain.draw(this.ctx, sw, sh)
 
       this.rafId = requestAnimationFrame(loop)
     }

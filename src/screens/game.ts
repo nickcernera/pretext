@@ -137,7 +137,7 @@ export class GameScreen {
         this.playerTexts.set(killerId, existing + ' ' + victimHandle)
 
         this.renderer.hud.addKillEvent(killerHandle, victimHandle)
-        this.renderer.rain.addKill(killerHandle, victimHandle, window.innerWidth, window.innerHeight)
+        this.renderer.rain.addKill(killerHandle, victimHandle)
       },
       onDied: (stats) => {
         this.stop()
@@ -373,7 +373,7 @@ export class GameScreen {
         const existing = this.playerTexts.get(this.playerId) || this.handle
         this.playerTexts.set(this.playerId, existing + ' ' + bot.handle)
         this.renderer.hud.addKillEvent(this.handle, bot.handle)
-        this.renderer.rain.addKill(this.handle, bot.handle, window.innerWidth, window.innerHeight)
+        this.renderer.rain.addKill(this.handle, bot.handle)
 
         this.bots[i] = this.createBot(bot.handle)
       } else if (bot.mass > this.player.mass * EAT_RATIO) {
@@ -401,12 +401,12 @@ export class GameScreen {
         if (a.mass > b.mass * EAT_RATIO) {
           a.mass += b.mass * 0.8
           this.renderer.hud.addKillEvent(a.handle, b.handle)
-          this.renderer.rain.addKill(a.handle, b.handle, window.innerWidth, window.innerHeight)
+          this.renderer.rain.addKill(a.handle, b.handle)
           this.bots[j] = this.createBot(b.handle)
         } else if (b.mass > a.mass * EAT_RATIO) {
           b.mass += a.mass * 0.8
           this.renderer.hud.addKillEvent(b.handle, a.handle)
-          this.renderer.rain.addKill(b.handle, a.handle, window.innerWidth, window.innerHeight)
+          this.renderer.rain.addKill(b.handle, a.handle)
           this.bots[i] = this.createBot(a.handle)
         }
       }
