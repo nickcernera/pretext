@@ -108,7 +108,7 @@ export function getTwitterAuthUrl(codeChallenge: string, state: string): string 
     response_type: 'code',
     client_id: TWITTER_CLIENT_ID,
     redirect_uri: REDIRECT_URI,
-    scope: 'users.read',
+    scope: 'tweet.read users.read',
     state,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
