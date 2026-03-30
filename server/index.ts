@@ -48,6 +48,13 @@ const server = Bun.serve<WsData>({
       return corsResponse('ok')
     }
 
+    // Room browser
+    if (url.pathname === '/rooms' && req.method === 'GET') {
+      return corsResponse(JSON.stringify(roomManager.getRoomsResponse()), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
     // --- Auth routes ---
 
     // GET /auth/twitter — redirect to X OAuth
@@ -164,6 +171,12 @@ const server = Bun.serve<WsData>({
 
           room.addPlayer(playerId, handle, ws)
 
+          roomManager.pushActivity({
+            type: 'join',
+            text: `${handle} entered the arena`,
+            ts: Date.now(),
+          })
+
           const joinedMsg: ServerMessage = {
             t: 'joined',
             room: room.code,
@@ -190,6 +203,26 @@ const server = Bun.serve<WsData>({
           const player = room.players.get(ws.data.playerId)
           if (!player) return
           splitPlayer(player, Date.now())
+          break
+        }
+
+        case 'spectate': {
+          const roomCode = msg.room || ''
+          const room = roomCode
+            ? roomManager.getRoom(roomCode) || roomManager.getPublicRoom()
+            : roomManager.getPublicRoom()
+
+          ws.data.playerId = ''  // no player
+          ws.data.roomCode = room.code
+          room.addSpectator(ws)
+
+          const joinedMsg: ServerMessage = {
+            t: 'joined',
+            room: room.code,
+            playerId: '',
+            world: { w: WORLD_W, h: WORLD_H },
+          }
+          ws.send(JSON.stringify(joinedMsg))
           break
         }
 

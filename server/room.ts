@@ -10,7 +10,7 @@ import {
 } from '../shared/constants'
 import { handleToColor } from '../shared/protocol'
 import { PELLET_WORDS } from '../shared/words'
-import type { PelletState, LeaderboardEntry } from '../shared/protocol'
+import type { PelletState, LeaderboardEntry, RoomInfo, ActivityEvent, RoomsResponse } from '../shared/protocol'
 
 export type ServerCell = {
   cellId: number
@@ -177,10 +177,50 @@ export class Room {
     }
     return true
   }
+
+  getInfo(): RoomInfo {
+    let topPlayer: string | null = null
+    let topMass = 0
+    for (const p of this.players.values()) {
+      const mass = playerTotalMass(p)
+      if (mass > topMass) {
+        topMass = mass
+        topPlayer = p.handle
+      }
+    }
+    return {
+      code: this.code,
+      playerCount: this.playerCount(),
+      topPlayer,
+      topMass: Math.round(topMass),
+    }
+  }
 }
 
 export class RoomManager {
   private rooms: Map<string, Room> = new Map()
+  recentActivity: ActivityEvent[] = []
+
+  pushActivity(event: ActivityEvent) {
+    this.recentActivity.push(event)
+    if (this.recentActivity.length > 50) {
+      this.recentActivity.shift()
+    }
+  }
+
+  getRoomsResponse(): RoomsResponse {
+    const rooms: RoomInfo[] = []
+    let totalPlayers = 0
+    for (const room of this.rooms.values()) {
+      rooms.push(room.getInfo())
+      totalPlayers += room.playerCount()
+    }
+    return {
+      rooms,
+      totalPlayers,
+      activity: this.recentActivity,
+    }
+  }
 
   getOrCreateRoom(code: string): Room {
     let room = this.rooms.get(code)
