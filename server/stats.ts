@@ -51,19 +51,10 @@ export class StatsTracker {
   onWsOpen() { this.wsConnections++ }
   onWsClose() { this.wsConnections-- }
 
-  getStats(livePlayers: number) {
+  getPublicStats(livePlayers: number) {
     const avgSessionMs = this.totalSessions > 0
       ? Math.round(this.totalSessionMs / this.totalSessions)
       : 0
-
-    const avgTickMs = this.tickTimes.length > 0
-      ? this.tickTimes.reduce((a, b) => a + b, 0) / this.tickTimes.length
-      : 0
-    const maxTickMs = this.tickTimes.length > 0
-      ? Math.max(...this.tickTimes)
-      : 0
-
-    const memUsage = process.memoryUsage()
 
     return {
       live_players: livePlayers,
@@ -74,17 +65,27 @@ export class StatsTracker {
       longest_survival_handle: this.longestSurvivalHandle,
       peak_concurrent: this.peakConcurrent,
       uptime_seconds: Math.round((Date.now() - this.startedAt) / 1000),
-      // System health — tells you when to scale
-      health: {
-        ws_connections: this.wsConnections,
-        rooms: this.roomCount,
-        tick_avg_ms: Math.round(avgTickMs * 100) / 100,
-        tick_max_ms: Math.round(maxTickMs * 100) / 100,
-        tick_budget_ms: 33.33,  // 30 ticks/sec
-        tick_headroom_pct: Math.round((1 - avgTickMs / 33.33) * 100),
-        heap_mb: Math.round(memUsage.heapUsed / 1024 / 1024),
-        rss_mb: Math.round(memUsage.rss / 1024 / 1024),
-      },
+    }
+  }
+
+  getHealthStats() {
+    const avgTickMs = this.tickTimes.length > 0
+      ? this.tickTimes.reduce((a, b) => a + b, 0) / this.tickTimes.length
+      : 0
+    const maxTickMs = this.tickTimes.length > 0
+      ? Math.max(...this.tickTimes)
+      : 0
+    const memUsage = process.memoryUsage()
+
+    return {
+      ws_connections: this.wsConnections,
+      rooms: this.roomCount,
+      tick_avg_ms: Math.round(avgTickMs * 100) / 100,
+      tick_max_ms: Math.round(maxTickMs * 100) / 100,
+      tick_budget_ms: 33.33,
+      tick_headroom_pct: Math.round((1 - avgTickMs / 33.33) * 100),
+      heap_mb: Math.round(memUsage.heapUsed / 1024 / 1024),
+      rss_mb: Math.round(memUsage.rss / 1024 / 1024),
     }
   }
 }

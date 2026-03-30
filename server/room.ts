@@ -7,6 +7,7 @@ import {
   ROOM_IDLE_TIMEOUT,
   LEADERBOARD_INTERVAL,
   MIN_MASS,
+  MAX_ROOMS,
 } from '../shared/constants'
 import { handleToColor } from '../shared/protocol'
 import { createPelletBag } from '../shared/words'
@@ -225,16 +226,17 @@ export class RoomManager {
     }
   }
 
-  getOrCreateRoom(code: string): Room {
+  getOrCreateRoom(code: string): Room | null {
     let room = this.rooms.get(code)
     if (!room) {
+      if (this.rooms.size >= MAX_ROOMS) return null
       room = new Room(code)
       this.rooms.set(code, room)
     }
     return room
   }
 
-  getPublicRoom(): Room {
+  getPublicRoom(): Room | null {
     // Find a room with space that isn't a private code
     for (const room of this.rooms.values()) {
       if (room.playerCount() < ROOM_CAPACITY) {
@@ -242,8 +244,13 @@ export class RoomManager {
       }
     }
     // Create a new public room with random code
+    if (this.rooms.size >= MAX_ROOMS) return null
     const code = Math.random().toString(36).substring(2, 8)
     return this.getOrCreateRoom(code)
+  }
+
+  roomCount(): number {
+    return this.rooms.size
   }
 
   getRoom(code: string): Room | undefined {
