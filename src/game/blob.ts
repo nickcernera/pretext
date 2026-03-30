@@ -37,6 +37,45 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 const MIN_SEA_RADIUS = 28
 const MAX_VICTIM_AVATARS = 30
 
+// --- Text parse cache (avoids re-splitting + re-joining every frame) ---
+type BlobTextParsed = { text: string; handle: string; words: string[]; victims: string[]; corpus: string }
+const blobTextParsed = new Map<string, BlobTextParsed>()
+
+function parseBlobText(blobId: string, text: string, handle: string): BlobTextParsed {
+  const cached = blobTextParsed.get(blobId)
+  if (cached && cached.text === text && cached.handle === handle) return cached
+  const tokens = text.trim().split(/\s+/)
+  const words: string[] = []
+  const victims: string[] = []
+  for (const t of tokens) {
+    if (t.startsWith('@') && t !== handle) victims.push(t)
+    else if (!t.startsWith('@') && t.length > 0) words.push(t)
+  }
+  const result: BlobTextParsed = { text, handle, words, victims, corpus: words.join('  ') }
+  blobTextParsed.set(blobId, result)
+  if (blobTextParsed.size > 100) {
+    const first = blobTextParsed.keys().next().value
+    if (first && first !== blobId) blobTextParsed.delete(first)
+  }
+  return result
+}
+
+// --- Font size cache (avoids 5× binary search layout() calls per frame) ---
+type FontSizeEntry = { radiusBucket: number; corpusLen: number; fontSize: number }
+const fontSizeCache = new Map<string, FontSizeEntry>()
+
+// --- HSL parse cache (avoids regex per call) ---
+const hslCache = new Map<string, [string, string, string] | null>()
+
+function parseHSL(hsl: string): [string, string, string] | null {
+  const cached = hslCache.get(hsl)
+  if (cached !== undefined) return cached
+  const match = hsl.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/)
+  const result = match ? [match[1], match[2], match[3]] as [string, string, string] : null
+  hslCache.set(hsl, result)
+  return result
+}
+
 function getInitials(handle: string): string {
   const clean = handle.replace(/^@/, '')
   if (clean.length === 0) return '?'
@@ -98,31 +137,27 @@ export function drawBlob(
     spasmMap.delete(blobId)
   }
 
-  // === Circle body with wobble deformation ===
+  // === Circle body with wobble deformation (Path2D: compute once, draw twice) ===
   const WOBBLE_SEGMENTS = 32
   const baseWobble = Math.min(radius * 0.06, 12)
-  const wobbleAmount = baseWobble + spasmFactor * radius * 0.15 // spasm adds intense wobble
+  const wobbleAmount = baseWobble + spasmFactor * radius * 0.15
 
-  function wobblePath() {
-    ctx.beginPath()
-    for (let i = 0; i <= WOBBLE_SEGMENTS; i++) {
-      const angle = (i / WOBBLE_SEGMENTS) * Math.PI * 2
-      const wobble = wobbleAmount * (
-        Math.sin(angle * 3 + now * 0.002) * 0.3 +
-        Math.sin(angle * 5 - now * 0.003) * 0.2 +
-        movementWobble * Math.sin(angle * 2 + now * 0.004) * 0.5 +
-        spasmFactor * Math.sin(angle * 7 + now * 0.015) * 0.8 // fast, chaotic spasm
-      )
-      const r = radius + wobble
-      const px = x + Math.cos(angle) * r
-      const py = y + Math.sin(angle) * r
-      if (i === 0) ctx.moveTo(px, py)
-      else ctx.lineTo(px, py)
-    }
-    ctx.closePath()
+  const blobPath = new Path2D()
+  for (let i = 0; i <= WOBBLE_SEGMENTS; i++) {
+    const angle = (i / WOBBLE_SEGMENTS) * Math.PI * 2
+    const wobble = wobbleAmount * (
+      Math.sin(angle * 3 + now * 0.002) * 0.3 +
+      Math.sin(angle * 5 - now * 0.003) * 0.2 +
+      movementWobble * Math.sin(angle * 2 + now * 0.004) * 0.5 +
+      spasmFactor * Math.sin(angle * 7 + now * 0.015) * 0.8
+    )
+    const r = radius + wobble
+    const px = x + Math.cos(angle) * r
+    const py = y + Math.sin(angle) * r
+    if (i === 0) blobPath.moveTo(px, py)
+    else blobPath.lineTo(px, py)
   }
-
-  wobblePath()
+  blobPath.closePath()
 
   const fillGrad = ctx.createRadialGradient(
     x - radius * 0.2, y - radius * 0.2, 0,
@@ -131,19 +166,18 @@ export function drawBlob(
   fillGrad.addColorStop(0, colorToFill(color, 0.25))
   fillGrad.addColorStop(1, colorToFill(color, 0.06))
   ctx.fillStyle = fillGrad
-  ctx.fill()
+  ctx.fill(blobPath)
 
   if (isPlayer) {
     ctx.shadowColor = color
     ctx.shadowBlur = radius * 0.5
-    wobblePath()
-    ctx.fill()
+    ctx.fill(blobPath)
     ctx.shadowBlur = 0
   }
 
   ctx.strokeStyle = colorToAlpha(color, 0.35)
   ctx.lineWidth = 1.5
-  ctx.stroke()
+  ctx.stroke(blobPath)
 
   // === For tiny blobs, just show handle text ===
   if (radius < MIN_SEA_RADIUS) {
@@ -157,17 +191,8 @@ export function drawBlob(
     return
   }
 
-  // === Parse accumulated text into words (pellets) and victims (eaten players) ===
-  const tokens = text.trim().split(/\s+/)
-  const words: string[] = []
-  const victims: string[] = []
-  for (const t of tokens) {
-    if (t.startsWith('@') && t !== handle) {
-      victims.push(t)
-    } else if (!t.startsWith('@') && t.length > 0) {
-      words.push(t)
-    }
-  }
+  // === Parse accumulated text (cached — only recomputes when text changes) ===
+  const { words, victims, corpus } = parseBlobText(blobId, text, handle)
 
   // === Physics: velocity-based text offset (sloshing) ===
   let phys = blobPhysics.get(blobId)
@@ -243,7 +268,7 @@ export function drawBlob(
     ctx.arc(x, y, radius - 1, 0, Math.PI * 2)
     ctx.clip()
 
-    drawBlobTextSea(ctx, x, y, radius, words, obstacles, color, textOffX, textOffY)
+    drawBlobTextSea(ctx, x, y, radius, corpus, obstacles, color, textOffX, textOffY, blobId)
 
     ctx.restore()
   }
@@ -317,32 +342,36 @@ function drawBlobTextSea(
   cx: number,
   cy: number,
   radius: number,
-  words: string[],
+  corpusStr: string,
   obstacles: Obstacle[],
   color: string,
   offX: number,
   offY: number,
+  blobId: string,
 ) {
-  // Adaptive font sizing: binary search using layout() for accurate height estimation
-  // layout() computes height without constructing line strings — cheap per iteration
   const baseFontSize = Math.max(8, Math.min(14, radius * 0.12))
-  const corpusStr = words.join('  ')
   const diameter = radius * 2
-  // Average chord width ≈ radius × √2 (geometric mean of circle cross-sections)
   const avgChordWidth = radius * 1.4
 
-  let fontSize = baseFontSize
-  // Binary search: find largest font size where text fits within blob diameter
-  let lo = 5, hi = baseFontSize
-  for (let i = 0; i < 5; i++) {
-    const mid = (lo + hi) / 2
-    const font = `${mid}px ${UI_FONT_FAMILY}`
-    const prepared = getPrepared(corpusStr, font)
-    const { height } = layout(prepared, avgChordWidth, mid * 1.4)
-    if (height > diameter * 0.85) hi = mid
-    else lo = mid
+  // Cached font size: only recompute binary search when radius or corpus changes
+  const radiusBucket = Math.round(radius / 5)
+  const cachedFS = fontSizeCache.get(blobId)
+  let fontSize: number
+  if (cachedFS && cachedFS.radiusBucket === radiusBucket && cachedFS.corpusLen === corpusStr.length) {
+    fontSize = cachedFS.fontSize
+  } else {
+    let lo = 5, hi = baseFontSize
+    for (let i = 0; i < 5; i++) {
+      const mid = (lo + hi) / 2
+      const font = `${mid}px ${UI_FONT_FAMILY}`
+      const prepared = getPrepared(corpusStr, font)
+      const { height } = layout(prepared, avgChordWidth, mid * 1.4)
+      if (height > diameter * 0.85) hi = mid
+      else lo = mid
+    }
+    fontSize = Math.max(5, Math.min(14, lo))
+    fontSizeCache.set(blobId, { radiusBucket, corpusLen: corpusStr.length, fontSize })
   }
-  fontSize = Math.max(5, Math.min(14, lo))
 
   const lineHeight = fontSize * 1.4
   const font = `${fontSize}px ${UI_FONT_FAMILY}`
@@ -432,16 +461,16 @@ function getCircleExclusion(
   return [obs.cx - halfW, obs.cx + halfW]
 }
 
-// --- Color helpers ---
+// --- Color helpers (HSL parsed once, cached) ---
 
 function colorToFill(hsl: string, alpha: number): string {
-  const match = hsl.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/)
-  if (!match) return `rgba(10, 20, 15, ${alpha})`
-  return `hsla(${match[1]}, ${match[2]}%, ${Math.round(Number(match[3]) / 3)}%, ${alpha})`
+  const p = parseHSL(hsl)
+  if (!p) return `rgba(10, 20, 15, ${alpha})`
+  return `hsla(${p[0]}, ${p[1]}%, ${Math.round(Number(p[2]) / 3)}%, ${alpha})`
 }
 
 function colorToAlpha(hsl: string, alpha: number): string {
-  const match = hsl.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/)
-  if (!match) return `rgba(100, 200, 150, ${alpha})`
-  return `hsla(${match[1]}, ${match[2]}%, ${match[3]}%, ${alpha})`
+  const p = parseHSL(hsl)
+  if (!p) return `rgba(100, 200, 150, ${alpha})`
+  return `hsla(${p[0]}, ${p[1]}%, ${p[2]}%, ${alpha})`
 }

@@ -104,6 +104,15 @@ export class Renderer {
     allCells.sort((a, b) => a.cell.mass - b.cell.mass) // smallest first (back-to-front)
 
     for (const { cell, player, isLocal } of allCells) {
+      // Viewport culling — skip blobs entirely outside view
+      const blobR = massToRadius(cell.mass)
+      if (
+        cell.x + blobR < vp.x - 50 ||
+        cell.x - blobR > vp.x + vp.w + 50 ||
+        cell.y + blobR < vp.y - 50 ||
+        cell.y - blobR > vp.y + vp.h + 50
+      ) continue
+
       const text = playerTexts.get(player.id) || player.handle
       drawBlob(
         ctx, cell.x, cell.y, cell.mass, text, player.color,

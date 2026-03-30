@@ -327,7 +327,7 @@ export class Simulation {
           const dist = Math.sqrt(dx * dx + dy * dy)
           if (dist < cr + pelletRadius(pellet.word)) {
             c.mass += pellet.word.length * PELLET_MASS_PER_CHAR
-            p.text += ' ' + pellet.word
+            if (p.text.length < 500) p.text += ' ' + pellet.word
             const totalMass = playerTotalMass(p)
             if (totalMass > p.peakMass) p.peakMass = totalMass
             return false

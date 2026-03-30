@@ -63,16 +63,23 @@ export class PelletRenderer {
       let nearCX = 0
       let nearCY = 0
       let nearCR = 0
-      for (const cell of this.localCells) {
-        const dx = cell.x - p.x
-        const dy = cell.y - p.y
-        const d = Math.sqrt(dx * dx + dy * dy)
-        if (d < nearDist) {
-          nearDist = d
-          nearCX = cell.x
-          nearCY = cell.y
-          nearCR = cell.radius
+      if (this.localCells.length === 1) {
+        // Fast path: single cell (most common case — no split)
+        const cell = this.localCells[0]
+        nearCX = cell.x; nearCY = cell.y; nearCR = cell.radius
+        const dx = cell.x - p.x, dy = cell.y - p.y
+        nearDist = Math.sqrt(dx * dx + dy * dy)
+      } else if (this.localCells.length > 1) {
+        // Multi-cell: compare squared distances, sqrt only the winner
+        let nearDist2 = Infinity
+        for (const cell of this.localCells) {
+          const dx = cell.x - p.x, dy = cell.y - p.y
+          const d2 = dx * dx + dy * dy
+          if (d2 < nearDist2) {
+            nearDist2 = d2; nearCX = cell.x; nearCY = cell.y; nearCR = cell.radius
+          }
         }
+        nearDist = Math.sqrt(nearDist2)
       }
 
       const pr = pelletRadius(p.word)
