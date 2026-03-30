@@ -250,8 +250,13 @@ export class Simulation {
             killerPlayer.kills++
             killerPlayer.victims.push(victimPlayer.handle)
             killerPlayer.text = `ate ${victimPlayer.handle}`
-            this.stats.onKill()
-            this.stats.onPlayerDeath(now - victimPlayer.joinedAt, victimPlayer.handle)
+            // Only track stats for kills involving real players (not bot-on-bot)
+            if (killerPlayer.ws || victimPlayer.ws) {
+              this.stats.onKill()
+            }
+            if (victimPlayer.ws) {
+              this.stats.onPlayerDeath(now - victimPlayer.joinedAt, victimPlayer.handle)
+            }
 
             // Kill message
             const killMsg: ServerMessage = {
