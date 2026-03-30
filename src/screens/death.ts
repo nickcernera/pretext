@@ -237,8 +237,10 @@ export class DeathScreen {
     // Attribution footer
     const footer = document.createElement('div')
     footer.style.cssText = `
-      position: fixed; bottom: 16px; left: 0; right: 0;
-      display: flex; justify-content: center; align-items: center; gap: 12px;
+      position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 20px; border-radius: 20px;
+      background: rgba(5, 10, 8, 0.7); border: 1px solid #1a2a1a;
     `
     const makeFooterLink = (text: string, href: string): HTMLAnchorElement => {
       const a = document.createElement('a')
@@ -248,10 +250,11 @@ export class DeathScreen {
       a.rel = 'noopener'
       a.style.cssText = `
         font-family: ${UI_FONT_FAMILY}; font-size: 11px; color: #3a5a4a;
-        text-decoration: none; transition: color 0.15s;
+        text-decoration: underline; text-underline-offset: 3px;
+        text-decoration-color: #2a3a2a; transition: color 0.15s, text-decoration-color 0.15s;
       `
-      a.addEventListener('mouseenter', () => { a.style.color = '#4a7a5a' })
-      a.addEventListener('mouseleave', () => { a.style.color = '#3a5a4a' })
+      a.addEventListener('mouseenter', () => { a.style.color = '#4a7a5a'; a.style.textDecorationColor = '#4a7a5a' })
+      a.addEventListener('mouseleave', () => { a.style.color = '#3a5a4a'; a.style.textDecorationColor = '#2a3a2a' })
       return a
     }
     footer.appendChild(makeFooterLink('Created by Cernera Design', 'https://x.com/cerneradesign'))
