@@ -21,7 +21,10 @@ export async function exchangeCodeForToken(code: string, codeVerifier: string): 
     },
     body: params.toString(),
   })
-  if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`)
+  if (!res.ok) {
+    const errBody = await res.text()
+    throw new Error(`Token exchange failed: ${res.status} — ${errBody}`)
+  }
   return (await res.json()).access_token
 }
 
@@ -29,7 +32,12 @@ export async function fetchUserInfo(accessToken: string): Promise<UserInfo> {
   const res = await fetch('https://api.x.com/2/users/me?user.fields=description,profile_image_url', {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
-  if (!res.ok) throw new Error(`User fetch failed: ${res.status}`)
+  if (!res.ok) {
+    const errBody = await res.text()
+    console.error('User fetch failed:', res.status, errBody)
+    throw new Error(`User fetch failed: ${res.status} — ${errBody}`)
+  }
+  console.log('User info fetched successfully')
   const data = await res.json()
   return {
     handle: `@${data.data.username}`,

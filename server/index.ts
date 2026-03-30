@@ -67,7 +67,14 @@ const server = Bun.serve<WsData>({
           const body = await req.json()
           const { code, codeVerifier } = body as { code: string; codeVerifier: string }
           const accessToken = await exchangeCodeForToken(code, codeVerifier)
-          const userInfo = await fetchUserInfo(accessToken)
+          // Free tier can't fetch profile — try but fall back to placeholder
+          let userInfo: import('./auth').UserInfo
+          try {
+            userInfo = await fetchUserInfo(accessToken)
+          } catch {
+            const id = Math.random().toString(36).substring(2, 6)
+            userInfo = { handle: `@player_${id}`, displayName: `Player ${id}`, avatar: '', bio: '' }
+          }
           const jwt = createJWT(userInfo)
           return corsResponse(JSON.stringify({ jwt, user: userInfo }), {
             headers: { 'Content-Type': 'application/json' },
