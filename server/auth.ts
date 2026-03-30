@@ -1,7 +1,14 @@
+import { createHmac, timingSafeEqual } from 'crypto'
+
 const TWITTER_CLIENT_ID = process.env.TWITTER_CLIENT_ID || ''
 const TWITTER_CLIENT_SECRET = process.env.TWITTER_CLIENT_SECRET || ''
 const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:5173/callback'
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-prod'
+
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('JWT_SECRET environment variable is required in production')
+}
+const EFFECTIVE_SECRET = JWT_SECRET || 'dev-only-' + crypto.randomUUID()
 
 export type UserInfo = { handle: string; displayName: string; avatar: string; bio: string }
 
@@ -23,7 +30,8 @@ export async function exchangeCodeForToken(code: string, codeVerifier: string): 
   })
   if (!res.ok) {
     const errBody = await res.text()
-    throw new Error(`Token exchange failed: ${res.status} — ${errBody}`)
+    console.error('Token exchange failed:', res.status, errBody)
+    throw new Error('Authentication failed')
   }
   return (await res.json()).access_token
 }
@@ -35,7 +43,7 @@ export async function fetchUserInfo(accessToken: string): Promise<UserInfo> {
   if (!res.ok) {
     const errBody = await res.text()
     console.error('User fetch failed:', res.status, errBody)
-    throw new Error(`User fetch failed: ${res.status} — ${errBody}`)
+    throw new Error('Could not fetch user profile')
   }
   console.log('User info fetched successfully')
   const data = await res.json()
@@ -47,30 +55,61 @@ export async function fetchUserInfo(accessToken: string): Promise<UserInfo> {
   }
 }
 
+function base64url(buf: Buffer): string {
+  return buf.toString('base64url')
+}
+
+function base64urlEncode(str: string): string {
+  return Buffer.from(str).toString('base64url')
+}
+
 export function createJWT(userInfo: UserInfo): string {
-  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
-  const payload = btoa(JSON.stringify({ ...userInfo, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 }))
-  const signature = btoa(JWT_SECRET + header + payload)
+  const header = base64urlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+  const payload = base64urlEncode(JSON.stringify({
+    ...userInfo,
+    exp: Date.now() + 24 * 60 * 60 * 1000,
+  }))
+  const signature = base64url(
+    createHmac('sha256', EFFECTIVE_SECRET).update(`${header}.${payload}`).digest()
+  )
   return `${header}.${payload}.${signature}`
 }
 
 export function verifyJWT(token: string): UserInfo | null {
   try {
-    const [header, payload, sig] = token.split('.')
-    if (sig !== btoa(JWT_SECRET + header + payload)) return null
-    const data = JSON.parse(atob(payload))
-    if (data.exp < Date.now()) return null
-    return { handle: data.handle, displayName: data.displayName, avatar: data.avatar, bio: data.bio }
-  } catch { return null }
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const [header, payload, sig] = parts
+
+    const expected = createHmac('sha256', EFFECTIVE_SECRET)
+      .update(`${header}.${payload}`)
+      .digest()
+    const actual = Buffer.from(sig, 'base64url')
+
+    if (expected.length !== actual.length) return null
+    if (!timingSafeEqual(expected, actual)) return null
+
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString())
+    if (typeof data.exp !== 'number' || data.exp < Date.now()) return null
+
+    return {
+      handle: data.handle,
+      displayName: data.displayName,
+      avatar: data.avatar,
+      bio: data.bio,
+    }
+  } catch {
+    return null
+  }
 }
 
-export function getTwitterAuthUrl(codeChallenge: string): string {
+export function getTwitterAuthUrl(codeChallenge: string, state: string): string {
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: TWITTER_CLIENT_ID,
     redirect_uri: REDIRECT_URI,
-    scope: 'tweet.read users.read offline.access',
-    state: 'pretext',
+    scope: 'users.read',
+    state,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
   })
