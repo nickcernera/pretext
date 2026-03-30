@@ -22,13 +22,20 @@ function getPrepared(text: string, font: string): PreparedTextWithSegments {
 type BlobPhysics = { prevX: number; prevY: number; offX: number; offY: number }
 const blobPhysics = new Map<string, BlobPhysics>()
 
+// --- Spasm effect (failed split feedback) ---
+const spasmMap = new Map<string, number>() // blobId -> spasm end time
+
+export function triggerSpasm(blobId: string) {
+  spasmMap.set(blobId, performance.now() + 300) // 300ms spasm
+}
+
 // --- Types ---
 type Obstacle = { cx: number; cy: number; radius: number }
 
 // --- Constants ---
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 const MIN_SEA_RADIUS = 28
-const MAX_VICTIM_AVATARS = 15
+const MAX_VICTIM_AVATARS = 30
 
 function getInitials(handle: string): string {
   const clean = handle.replace(/^@/, '')
@@ -49,10 +56,55 @@ export function drawBlob(
   dt: number,
 ) {
   const radius = massToRadius(mass)
+  const now = performance.now()
 
-  // === Circle body ===
-  ctx.beginPath()
-  ctx.arc(x, y, radius, 0, Math.PI * 2)
+  // === Wobble: compute velocity for deformation ===
+  let physW = blobPhysics.get(blobId)
+  if (!physW) {
+    physW = { prevX: x, prevY: y, offX: 0, offY: 0 }
+    blobPhysics.set(blobId, physW)
+  }
+  const speed = Math.sqrt(
+    ((x - physW.prevX) / Math.max(dt, 0.001)) ** 2 +
+    ((y - physW.prevY) / Math.max(dt, 0.001)) ** 2,
+  )
+  const movementWobble = Math.min(speed * 0.002, 1)
+
+  // === Spasm: check for active spasm on this blob ===
+  const spasmEnd = spasmMap.get(blobId) ?? 0
+  let spasmFactor = 0
+  if (now < spasmEnd) {
+    const remaining = (spasmEnd - now) / 300
+    spasmFactor = remaining // 1.0 → 0.0 over 300ms
+  } else if (spasmMap.has(blobId)) {
+    spasmMap.delete(blobId)
+  }
+
+  // === Circle body with wobble deformation ===
+  const WOBBLE_SEGMENTS = 32
+  const baseWobble = Math.min(radius * 0.06, 12)
+  const wobbleAmount = baseWobble + spasmFactor * radius * 0.15 // spasm adds intense wobble
+
+  function wobblePath() {
+    ctx.beginPath()
+    for (let i = 0; i <= WOBBLE_SEGMENTS; i++) {
+      const angle = (i / WOBBLE_SEGMENTS) * Math.PI * 2
+      const wobble = wobbleAmount * (
+        Math.sin(angle * 3 + now * 0.002) * 0.3 +
+        Math.sin(angle * 5 - now * 0.003) * 0.2 +
+        movementWobble * Math.sin(angle * 2 + now * 0.004) * 0.5 +
+        spasmFactor * Math.sin(angle * 7 + now * 0.015) * 0.8 // fast, chaotic spasm
+      )
+      const r = radius + wobble
+      const px = x + Math.cos(angle) * r
+      const py = y + Math.sin(angle) * r
+      if (i === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    }
+    ctx.closePath()
+  }
+
+  wobblePath()
 
   const fillGrad = ctx.createRadialGradient(
     x - radius * 0.2, y - radius * 0.2, 0,
@@ -66,8 +118,7 @@ export function drawBlob(
   if (isPlayer) {
     ctx.shadowColor = color
     ctx.shadowBlur = radius * 0.5
-    ctx.beginPath()
-    ctx.arc(x, y, radius, 0, Math.PI * 2)
+    wobblePath()
     ctx.fill()
     ctx.shadowBlur = 0
   }
@@ -126,7 +177,13 @@ export function drawBlob(
   // === Compute avatar sizes ===
   const avatarR = Math.max(8, radius * 0.16)
   const handleSize = Math.max(7, Math.min(16, radius * 0.13))
-  const victimR = Math.max(5, radius * 0.09)
+
+  // Victim avatar radius — shrink when many victims
+  const numVictims = Math.min(victims.length, MAX_VICTIM_AVATARS)
+  const baseVictimR = Math.max(5, radius * 0.09)
+  const victimR = numVictims > 15
+    ? Math.max(3, baseVictimR * (15 / numVictims))
+    : baseVictimR
 
   // Center identity: avatar circle + handle text below
   const blockH = avatarR * 2 + 3 + handleSize
@@ -139,12 +196,11 @@ export function drawBlob(
   obstacles.push({ cx: x, cy: y, radius: blockH / 2 + 2 })
 
   // Victim avatar positions (golden angle spiral)
-  const numVictims = Math.min(victims.length, MAX_VICTIM_AVATARS)
   const victimPos: { cx: number; cy: number; handle: string }[] = []
 
   for (let i = 0; i < numVictims; i++) {
     const angle = i * GOLDEN_ANGLE
-    const dist = radius * (0.45 + (i / Math.max(numVictims, 1)) * 0.25)
+    const dist = radius * (0.35 + (i / Math.max(numVictims, 1)) * 0.35)
     let vcx = x + Math.cos(angle) * dist
     let vcy = y + Math.sin(angle) * dist
 
@@ -232,12 +288,26 @@ function drawBlobTextSea(
   offX: number,
   offY: number,
 ) {
-  const fontSize = Math.max(8, Math.min(14, radius * 0.12))
+  // Adaptive font sizing: shrink to fit all words
+  const baseFontSize = Math.max(8, Math.min(14, radius * 0.12))
+  const totalChars = words.reduce((sum, w) => sum + w.length + 2, 0) // +2 for spacing
+
+  // Estimate capacity at base font size (~55% of circle area usable after obstacles)
+  const usableArea = Math.PI * radius * radius * 0.55
+  const charW = baseFontSize * 0.6 // approximate monospace char width
+  const baseLineHeight = baseFontSize * 1.4
+  const charsAtBase = usableArea / (charW * baseLineHeight)
+
+  let fontSize = baseFontSize
+  if (totalChars > charsAtBase && charsAtBase > 0) {
+    // Shrink proportionally (sqrt because area scales quadratically with font)
+    fontSize = baseFontSize * Math.sqrt(charsAtBase / totalChars)
+  }
+  fontSize = Math.max(5, Math.min(14, fontSize)) // floor at 5px
+
   const lineHeight = fontSize * 1.4
   const font = `${fontSize}px ${UI_FONT_FAMILY}`
 
-  // Build corpus from eaten words — no artificial repetition
-  // The sea grows naturally as you eat more
   const linesNeeded = Math.ceil((radius * 2) / lineHeight) + 2
   const corpusStr = words.join('  ')
   const prepared = getPrepared(corpusStr, font)
@@ -272,8 +342,13 @@ function drawBlobTextSea(
       const maxW = span.right - span.left
       if (maxW < fontSize * 1.5) continue
 
-      const line = layoutNextLine(prepared, cursor, maxW)
-      if (!line) break // corpus exhausted — sea grows as you eat more
+      let line = layoutNextLine(prepared, cursor, maxW)
+      if (!line) {
+        // Corpus exhausted — wrap around and keep filling
+        cursor = { segmentIndex: 0, graphemeIndex: 0 }
+        line = layoutNextLine(prepared, cursor, maxW)
+        if (!line) break // truly empty corpus
+      }
 
       ctx.globalAlpha = 0.45
       ctx.fillStyle = color
