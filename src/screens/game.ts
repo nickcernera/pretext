@@ -60,6 +60,7 @@ export type GameOptions = {
   serverUrl?: string
   roomCode?: string | null
   token?: string
+  avatar?: string
   spectate?: boolean
 }
 
@@ -89,6 +90,7 @@ function toPlayerState(p: LocalPlayer | Bot): PlayerState {
     y: com.y,
     mass: totalMass(p.cells),
     color: p.color,
+    avatar: '',
     cells: p.cells.map(c => ({ cellId: c.cellId, x: c.x, y: c.y, mass: c.mass })),
   }
 }
@@ -267,7 +269,7 @@ export class GameScreen {
           this.client!.spectate(this.options.roomCode || undefined)
           this.spectating = true
         } else {
-          this.client!.join(this.options.roomCode || null, this.options.token, this.handle)
+          this.client!.join(this.options.roomCode || null, this.options.token, this.handle, this.options.avatar)
         }
       } catch (e) {
         console.error('[GameClient] failed to connect:', e)

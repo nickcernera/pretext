@@ -352,6 +352,7 @@ export class Simulation {
         y: Math.round(com.y),
         mass: Math.round(totalMass),
         color: p.color,
+        avatar: p.avatar,
         cells: p.cells.map(c => ({
           cellId: c.cellId,
           x: Math.round(c.x),

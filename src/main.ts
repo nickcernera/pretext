@@ -46,7 +46,7 @@ function showLanding() {
   const landing = new LandingScreen(canvas, SERVER_URL)
   landing.show().then((result) => {
     if (result.action === 'play') {
-      startGame(result.handle, result.token, result.room)
+      startGame(result.handle, result.token, result.room, result.avatar)
     } else if (result.action === 'spectate') {
       startSpectate(result.room)
     }
@@ -69,12 +69,13 @@ function startSpectate(room?: string) {
   game.start()
 }
 
-function startGame(handle: string, token?: string, room?: string) {
+function startGame(handle: string, token?: string, room?: string, avatar?: string) {
   const game = new GameScreen(canvas, handle, {
     mode: 'online',
     serverUrl: `${SERVER_URL}/ws`,
     roomCode: room || null,
     token,
+    avatar,
   })
 
   game.setOnDeath(async (stats) => {
@@ -83,7 +84,7 @@ function startGame(handle: string, token?: string, room?: string) {
     const death = new DeathScreen(canvas)
     const action = await death.show(stats, game.roomCode || 'PUBLIC', `${SERVER_URL}/ws`)
     if (action === 'play') {
-      startGame(handle, token, room)
+      startGame(handle, token, room, avatar)
     } else {
       showLanding()
     }

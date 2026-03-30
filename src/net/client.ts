@@ -40,8 +40,8 @@ export class GameClient {
     })
   }
 
-  join(room: string | null, token?: string, guest?: string) {
-    this.send({ t: 'join', room: room || '', token, guest })
+  join(room: string | null, token?: string, guest?: string, avatar?: string) {
+    this.send({ t: 'join', room: room || '', token, guest, avatar })
   }
 
   spectate(room?: string) {

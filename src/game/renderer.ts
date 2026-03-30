@@ -107,7 +107,7 @@ export class Renderer {
       const text = playerTexts.get(player.id) || player.handle
       drawBlob(
         ctx, cell.x, cell.y, cell.mass, text, player.color,
-        isLocal, player.handle, `${player.id}:${cell.cellId}`, dt,
+        isLocal, player.handle, `${player.id}:${cell.cellId}`, dt, player.avatar,
       )
     }
 

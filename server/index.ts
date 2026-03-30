@@ -173,6 +173,7 @@ const server = Bun.serve<WsData>({
           const playerId = generatePlayerId()
           const roomCode = msg.room || ''
           const handle = msg.guest || '@anon'
+          const avatar = msg.avatar || ''
 
           const room = roomCode
             ? roomManager.getOrCreateRoom(roomCode)
@@ -181,7 +182,7 @@ const server = Bun.serve<WsData>({
           ws.data.playerId = playerId
           ws.data.roomCode = room.code
 
-          room.addPlayer(playerId, handle, ws)
+          room.addPlayer(playerId, handle, ws, avatar)
 
           const livePlayers = roomManager.allRooms().reduce(
             (sum, r) => sum + r.realPlayerCount(), 0

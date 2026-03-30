@@ -1,4 +1,4 @@
-import { prepareWithSegments, layoutNextLine, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
+import { prepareWithSegments, layoutNextLine, layout, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
 import { BLOB_FONT_FAMILY, UI_FONT_FAMILY } from '@shared/constants'
 import { massToRadius, handleToColor } from '@shared/protocol'
 
@@ -43,6 +43,23 @@ function getInitials(handle: string): string {
   return clean.slice(0, 2).toUpperCase()
 }
 
+// --- Avatar image cache ---
+const avatarImages = new Map<string, HTMLImageElement | null>() // url -> loaded img or null (failed)
+
+function getAvatarImage(url: string): HTMLImageElement | null {
+  if (!url) return null
+  const cached = avatarImages.get(url)
+  if (cached !== undefined) return cached
+  // Start loading
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  avatarImages.set(url, null) // mark as loading
+  img.onload = () => avatarImages.set(url, img)
+  img.onerror = () => avatarImages.set(url, null)
+  img.src = url
+  return null
+}
+
 export function drawBlob(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -54,6 +71,7 @@ export function drawBlob(
   handle: string,
   blobId: string,
   dt: number,
+  avatar = '',
 ) {
   const radius = massToRadius(mass)
   const now = performance.now()
@@ -231,7 +249,8 @@ export function drawBlob(
   }
 
   // === Draw center avatar ===
-  drawAvatar(ctx, x, avatarCY, avatarR, getInitials(handle), color, true)
+  const avatarImg = getAvatarImage(avatar)
+  drawAvatar(ctx, x, avatarCY, avatarR, getInitials(handle), color, true, avatarImg)
 
   // Handle text below avatar
   const handleY = avatarCY + avatarR + 3
@@ -259,22 +278,38 @@ function drawAvatar(
   initials: string,
   color: string,
   isOwner: boolean,
+  img: HTMLImageElement | null = null,
 ) {
+  ctx.save()
   ctx.beginPath()
   ctx.arc(cx, cy, r, 0, Math.PI * 2)
-  ctx.fillStyle = isOwner ? colorToFill(color, 0.5) : colorToFill(color, 0.35)
-  ctx.fill()
-  ctx.strokeStyle = colorToAlpha(color, isOwner ? 0.7 : 0.5)
-  ctx.lineWidth = 1
-  ctx.stroke()
 
-  const fs = Math.max(5, r * 0.85)
-  ctx.font = `bold ${fs}px ${BLOB_FONT_FAMILY}`
-  ctx.textBaseline = 'middle'
-  ctx.textAlign = 'center'
-  ctx.fillStyle = color
-  ctx.fillText(initials, cx, cy)
-  ctx.textAlign = 'start'
+  if (img) {
+    ctx.clip()
+    ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2)
+    ctx.restore()
+    // Draw border on top
+    ctx.beginPath()
+    ctx.arc(cx, cy, r, 0, Math.PI * 2)
+    ctx.strokeStyle = colorToAlpha(color, isOwner ? 0.7 : 0.5)
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  } else {
+    ctx.fillStyle = isOwner ? colorToFill(color, 0.5) : colorToFill(color, 0.35)
+    ctx.fill()
+    ctx.strokeStyle = colorToAlpha(color, isOwner ? 0.7 : 0.5)
+    ctx.lineWidth = 1
+    ctx.stroke()
+    ctx.restore()
+
+    const fs = Math.max(5, r * 0.85)
+    ctx.font = `bold ${fs}px ${BLOB_FONT_FAMILY}`
+    ctx.textBaseline = 'middle'
+    ctx.textAlign = 'center'
+    ctx.fillStyle = color
+    ctx.fillText(initials, cx, cy)
+    ctx.textAlign = 'start'
+  }
 }
 
 function drawBlobTextSea(
@@ -288,28 +323,31 @@ function drawBlobTextSea(
   offX: number,
   offY: number,
 ) {
-  // Adaptive font sizing: shrink to fit all words
+  // Adaptive font sizing: binary search using layout() for accurate height estimation
+  // layout() computes height without constructing line strings — cheap per iteration
   const baseFontSize = Math.max(8, Math.min(14, radius * 0.12))
-  const totalChars = words.reduce((sum, w) => sum + w.length + 2, 0) // +2 for spacing
-
-  // Estimate capacity at base font size (~55% of circle area usable after obstacles)
-  const usableArea = Math.PI * radius * radius * 0.55
-  const charW = baseFontSize * 0.6 // approximate monospace char width
-  const baseLineHeight = baseFontSize * 1.4
-  const charsAtBase = usableArea / (charW * baseLineHeight)
+  const corpusStr = words.join('  ')
+  const diameter = radius * 2
+  // Average chord width ≈ radius × √2 (geometric mean of circle cross-sections)
+  const avgChordWidth = radius * 1.4
 
   let fontSize = baseFontSize
-  if (totalChars > charsAtBase && charsAtBase > 0) {
-    // Shrink proportionally (sqrt because area scales quadratically with font)
-    fontSize = baseFontSize * Math.sqrt(charsAtBase / totalChars)
+  // Binary search: find largest font size where text fits within blob diameter
+  let lo = 5, hi = baseFontSize
+  for (let i = 0; i < 5; i++) {
+    const mid = (lo + hi) / 2
+    const font = `${mid}px ${UI_FONT_FAMILY}`
+    const prepared = getPrepared(corpusStr, font)
+    const { height } = layout(prepared, avgChordWidth, mid * 1.4)
+    if (height > diameter * 0.85) hi = mid
+    else lo = mid
   }
-  fontSize = Math.max(5, Math.min(14, fontSize)) // floor at 5px
+  fontSize = Math.max(5, Math.min(14, lo))
 
   const lineHeight = fontSize * 1.4
   const font = `${fontSize}px ${UI_FONT_FAMILY}`
 
   const linesNeeded = Math.ceil((radius * 2) / lineHeight) + 2
-  const corpusStr = words.join('  ')
   const prepared = getPrepared(corpusStr, font)
 
   ctx.font = font
@@ -352,7 +390,9 @@ function drawBlobTextSea(
 
       ctx.globalAlpha = 0.45
       ctx.fillStyle = color
-      ctx.fillText(line.text, span.left + offX, lineY + offY)
+      // Center text within the chord span using pretext's measured line width
+      const xCenter = (maxW - line.width) / 2
+      ctx.fillText(line.text, span.left + xCenter + offX, lineY + offY)
       cursor = line.end
     }
   }

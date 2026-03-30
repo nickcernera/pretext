@@ -1,6 +1,6 @@
 // --- Client → Server ---
 export type ClientMessage =
-  | { t: 'join'; room: string; token?: string; guest?: string }
+  | { t: 'join'; room: string; token?: string; guest?: string; avatar?: string }
   | { t: 'input'; x: number; y: number }
   | { t: 'split' }
   | { t: 'eject' }
@@ -29,6 +29,7 @@ export type PlayerState = {
   y: number        // center-of-mass Y
   mass: number     // total mass
   color: string
+  avatar: string   // profile image URL (empty for guests/bots)
   cells: CellState[]
 }
 

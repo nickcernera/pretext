@@ -26,6 +26,7 @@ export type ServerPlayer = {
   id: string
   handle: string
   bio: string
+  avatar: string
   cells: ServerCell[]
   color: string
   targetX: number
@@ -98,13 +99,14 @@ export class Room {
     return { id: this.nextPelletId++, x, y, word }
   }
 
-  addPlayer(id: string, handle: string, ws: ServerWebSocket<WsData> | null): ServerPlayer {
+  addPlayer(id: string, handle: string, ws: ServerWebSocket<WsData> | null, avatar = ''): ServerPlayer {
     const x = Math.random() * WORLD_W
     const y = Math.random() * WORLD_H
     const player: ServerPlayer = {
       id,
       handle,
       bio: '',
+      avatar,
       cells: [{ cellId: 0, x, y, mass: 200, vx: 0, vy: 0, splitTime: 0 }],
       color: handleToColor(handle),
       targetX: x,

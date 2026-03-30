@@ -27,7 +27,7 @@ function excludeRange(spans: Span[], exclL: number, exclR: number): Span[] {
 }
 
 export type LandingResult =
-  | { action: 'play'; handle: string; token?: string; room?: string }
+  | { action: 'play'; handle: string; token?: string; room?: string; avatar?: string }
   | { action: 'spectate'; room?: string }
   | { action: 'auth' }
 
@@ -266,6 +266,7 @@ export class LandingScreen {
     }
 
     const getToken = (): string | undefined => user?.jwt
+    const getAvatar = (): string | undefined => user?.avatar || undefined
 
     const makeButton = (text: string, primary: boolean, size: 'normal' | 'large' = 'normal'): HTMLButtonElement => {
       const btn = document.createElement('button')
@@ -326,7 +327,7 @@ export class LandingScreen {
       panel.appendChild(roomLabel)
 
       const joinRoomBtn = makeButton('Join Game', true, 'large')
-      joinRoomBtn.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: getHandle(), token: getToken(), room: roomFromUrl }) })
+      joinRoomBtn.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: getHandle(), token: getToken(), avatar: getAvatar(), room: roomFromUrl }) })
       panel.appendChild(joinRoomBtn)
 
       if (!user) {
@@ -338,7 +339,7 @@ export class LandingScreen {
     } else {
       // Quick Play — primary CTA
       const quickPlayBtn = makeButton('Quick Play', true, 'large')
-      quickPlayBtn.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: getHandle(), token: getToken() }) })
+      quickPlayBtn.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: getHandle(), token: getToken(), avatar: getAvatar() }) })
       panel.appendChild(quickPlayBtn)
 
       // Create Room + Sign in row
@@ -383,7 +384,7 @@ export class LandingScreen {
         const code = roomInput.value.trim()
         if (!code) return
         cleanup()
-        resolve({ action: 'play', handle: getHandle(), token: getToken(), room: code })
+        resolve({ action: 'play', handle: getHandle(), token: getToken(), avatar: getAvatar(), room: code })
       })
       roomInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinBtn.click() })
 
@@ -457,7 +458,7 @@ export class LandingScreen {
           roomsList.appendChild(empty)
         } else {
           for (const room of activeRooms.slice(0, 5)) {
-            roomsList.appendChild(this.buildRoomCard(room, cleanup, resolve, getHandle, getToken))
+            roomsList.appendChild(this.buildRoomCard(room, cleanup, resolve, getHandle, getToken, getAvatar))
           }
         }
 
@@ -542,7 +543,7 @@ export class LandingScreen {
       panel.appendChild(linkRow)
 
       const startBtn = makeButton('Start Game', true, 'large')
-      startBtn.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: getHandle(), token: getToken(), room: code }) })
+      startBtn.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: getHandle(), token: getToken(), avatar: getAvatar(), room: code }) })
       panel.appendChild(startBtn)
     }
   }
@@ -553,6 +554,7 @@ export class LandingScreen {
     resolve: (result: LandingResult) => void,
     getHandle: () => string,
     getToken: () => string | undefined,
+    getAvatar: () => string | undefined,
   ): HTMLDivElement {
     const card = document.createElement('div')
     card.style.cssText = `
@@ -562,7 +564,7 @@ export class LandingScreen {
     `
     card.addEventListener('mouseenter', () => { card.style.borderColor = '#3a5a4a'; card.style.background = 'rgba(0,255,65,0.03)' })
     card.addEventListener('mouseleave', () => { card.style.borderColor = '#1a2a1a'; card.style.background = 'transparent' })
-    card.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: getHandle(), token: getToken(), room: room.code }) })
+    card.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: getHandle(), token: getToken(), avatar: getAvatar(), room: room.code }) })
 
     const left = document.createElement('div')
     const codeLabel = document.createElement('div')
