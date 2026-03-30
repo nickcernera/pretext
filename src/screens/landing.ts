@@ -283,7 +283,7 @@ export class LandingScreen {
         font-family: ${UI_FONT_FAMILY}; font-size: ${fontSize}; padding: ${pad};
         border: 1px solid ${primary ? RAIN_COLOR : '#3a5a4a'}; border-radius: 4px;
         background: ${primary ? '#1a2a1a' : 'transparent'}; color: ${primary ? '#d0ffe0' : '#4a7a5a'};
-        cursor: pointer; min-width: 200px; transition: all 0.15s;
+        cursor: pointer; width: 280px; transition: all 0.15s;
       `
       btn.addEventListener('mouseenter', () => { btn.style.background = primary ? '#2a3a2a' : '#1a2a1a'; btn.style.color = '#d0ffe0' })
       btn.addEventListener('mouseleave', () => { btn.style.background = primary ? '#1a2a1a' : 'transparent'; btn.style.color = primary ? '#d0ffe0' : '#4a7a5a' })
@@ -358,12 +358,12 @@ export class LandingScreen {
 
       // Tertiary actions — Create Room + Join Room
       const tertiaryRow = document.createElement('div')
-      tertiaryRow.style.cssText = 'display:flex;gap:8px;margin-top:16px;align-items:center;justify-content:center;'
+      tertiaryRow.style.cssText = 'display:flex;gap:8px;margin-top:16px;width:280px;'
 
       const makeSmallBtn = (text: string): HTMLButtonElement => {
         const btn = document.createElement('button')
         btn.textContent = text
-        btn.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:12px;padding:8px 20px;background:transparent;border:1px solid #2a3a2a;border-radius:4px;color:#4a7a5a;cursor:pointer;transition:all 0.15s;`
+        btn.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:12px;padding:8px 20px;background:transparent;border:1px solid #2a3a2a;border-radius:4px;color:#4a7a5a;cursor:pointer;transition:all 0.15s;flex:1;`
         btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#3a5a4a'; btn.style.color = '#d0ffe0' })
         btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#2a3a2a'; btn.style.color = '#4a7a5a' })
         return btn
@@ -418,9 +418,26 @@ export class LandingScreen {
         }
         while (roomsList.firstChild) roomsList.removeChild(roomsList.firstChild)
         const activeRooms = data.rooms.filter(r => r.playerCount > 0).sort((a, b) => b.playerCount - a.playerCount)
-        for (const room of activeRooms.slice(0, 3)) {
-          roomsList.appendChild(this.buildRoomCard(room, cleanup, resolve, getHandle, getToken, getAvatar))
+        const initialCount = 3
+        let expanded = false
+
+        const renderRooms = () => {
+          while (roomsList.firstChild) roomsList.removeChild(roomsList.firstChild)
+          const visible = expanded ? activeRooms : activeRooms.slice(0, initialCount)
+          for (const room of visible) {
+            roomsList.appendChild(this.buildRoomCard(room, cleanup, resolve, getHandle, getToken, getAvatar))
+          }
+          if (activeRooms.length > initialCount) {
+            const toggle = document.createElement('button')
+            toggle.textContent = expanded ? 'show less' : `+${activeRooms.length - initialCount} more`
+            toggle.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:11px;color:#3a5a4a;background:none;border:none;cursor:pointer;padding:4px 0;transition:color 0.15s;align-self:center;`
+            toggle.addEventListener('mouseenter', () => { toggle.style.color = '#d0ffe0' })
+            toggle.addEventListener('mouseleave', () => { toggle.style.color = '#3a5a4a' })
+            toggle.addEventListener('click', () => { expanded = !expanded; renderRooms() })
+            roomsList.appendChild(toggle)
+          }
         }
+        renderRooms()
       }
 
       this.fetchRooms().then(data => { if (data) populateRooms(data) })
