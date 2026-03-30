@@ -348,49 +348,52 @@ export class LandingScreen {
       quickPlayBtn.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: getHandle(), token: getToken(), avatar: getAvatar() }) })
       panel.appendChild(quickPlayBtn)
 
-      // Secondary actions — subtle text links
-      const linksRow = document.createElement('div')
-      linksRow.style.cssText = `display:flex;gap:6px;margin-top:14px;align-items:center;justify-content:center;`
-
-      const makeLink = (text: string, onClick: () => void): HTMLButtonElement => {
-        const link = document.createElement('button')
-        link.textContent = text
-        link.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:12px;color:#3a5a4a;background:none;border:none;cursor:pointer;padding:2px 0;transition:color 0.15s;`
-        link.addEventListener('mouseenter', () => { link.style.color = '#d0ffe0' })
-        link.addEventListener('mouseleave', () => { link.style.color = '#3a5a4a' })
-        link.addEventListener('click', onClick)
-        return link
-      }
-      const makeDot = (): HTMLSpanElement => {
-        const dot = document.createElement('span')
-        dot.textContent = '\u00b7'
-        dot.style.cssText = `font-size:12px;color:#2a3a2a;`
-        return dot
+      // Sign in with X — secondary button (only when not signed in)
+      if (!user) {
+        const xBtn = makeButton('Sign in with X', false)
+        xBtn.style.marginTop = '8px'
+        xBtn.addEventListener('click', () => { cleanup(); startXAuth() })
+        panel.appendChild(xBtn)
       }
 
-      linksRow.appendChild(makeLink('Create Room', () => {
+      // Tertiary actions — Create Room + Join Room
+      const tertiaryRow = document.createElement('div')
+      tertiaryRow.style.cssText = 'display:flex;gap:8px;margin-top:16px;align-items:center;justify-content:center;'
+
+      const makeSmallBtn = (text: string): HTMLButtonElement => {
+        const btn = document.createElement('button')
+        btn.textContent = text
+        btn.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:12px;padding:8px 20px;background:transparent;border:1px solid #2a3a2a;border-radius:4px;color:#4a7a5a;cursor:pointer;transition:all 0.15s;`
+        btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#3a5a4a'; btn.style.color = '#d0ffe0' })
+        btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#2a3a2a'; btn.style.color = '#4a7a5a' })
+        return btn
+      }
+
+      const createBtn = makeSmallBtn('Create Room')
+      createBtn.addEventListener('click', () => {
         const code = Math.random().toString(36).substring(2, 8)
         showCreateRoomPanel(code)
-      }))
-      linksRow.appendChild(makeDot())
+      })
+      tertiaryRow.appendChild(createBtn)
 
-      // Join Room — inline expandable input
+      // Join Room — button that transforms into an input
       const joinWrap = document.createElement('div')
-      joinWrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;'
-      const joinLink = makeLink('Join Room', () => {
-        joinLink.style.display = 'none'
+      joinWrap.style.cssText = 'display:inline-flex;align-items:center;'
+      const joinBtn = makeSmallBtn('Join Room')
+      joinBtn.addEventListener('click', () => {
+        joinBtn.style.display = 'none'
         joinInput.style.display = 'block'
         joinInput.focus()
       })
-      joinWrap.appendChild(joinLink)
+      joinWrap.appendChild(joinBtn)
       const joinInput = document.createElement('input')
       joinInput.type = 'text'
-      joinInput.placeholder = 'code'
+      joinInput.placeholder = 'room code'
       joinInput.maxLength = 12
-      joinInput.style.cssText = `display:none;font-family:${UI_FONT_FAMILY};font-size:11px;padding:3px 6px;background:#0a150e;border:1px solid #3a5a4a;border-radius:3px;color:#d0ffe0;width:72px;outline:none;`
+      joinInput.style.cssText = `display:none;font-family:${UI_FONT_FAMILY};font-size:12px;padding:7px 12px;background:#0a150e;border:1px solid #3a5a4a;border-radius:4px;color:#d0ffe0;width:110px;outline:none;`
       joinInput.addEventListener('focus', () => { joinInput.style.borderColor = RAIN_COLOR })
       joinInput.addEventListener('blur', () => {
-        if (!joinInput.value.trim()) { joinInput.style.display = 'none'; joinLink.style.display = 'inline' }
+        if (!joinInput.value.trim()) { joinInput.style.display = 'none'; joinBtn.style.display = 'inline-block' }
         joinInput.style.borderColor = '#3a5a4a'
       })
       joinInput.addEventListener('keydown', (e) => {
@@ -398,13 +401,8 @@ export class LandingScreen {
         if (e.key === 'Escape') { joinInput.value = ''; joinInput.blur() }
       })
       joinWrap.appendChild(joinInput)
-      linksRow.appendChild(joinWrap)
-
-      if (!user) {
-        linksRow.appendChild(makeDot())
-        linksRow.appendChild(makeLink('Sign in with X', () => { cleanup(); startXAuth() }))
-      }
-      panel.appendChild(linksRow)
+      tertiaryRow.appendChild(joinWrap)
+      panel.appendChild(tertiaryRow)
 
       // Live rooms — shown only when active (no header, no empty state)
       const roomsList = document.createElement('div')
