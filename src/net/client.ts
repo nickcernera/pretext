@@ -44,6 +44,10 @@ export class GameClient {
     this.send({ t: 'join', room: room || '', token, guest })
   }
 
+  spectate(room?: string) {
+    this.send({ t: 'spectate', room: room || undefined })
+  }
+
   sendInput(x: number, y: number) {
     this.send({ t: 'input', x: Math.round(x), y: Math.round(y) })
   }

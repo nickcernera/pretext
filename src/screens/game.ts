@@ -60,6 +60,7 @@ export type GameOptions = {
   serverUrl?: string
   roomCode?: string | null
   token?: string
+  spectate?: boolean
 }
 
 function totalMass(cells: LocalCell[]): number {
@@ -173,6 +174,7 @@ export class GameScreen {
         this.playerId = playerId
         this.roomCode = room
         this.renderer.hud.setRoomCode(room)
+        this.renderer.hud.setupKeyListeners(room)
       },
       onState: (players, pellets) => {
         // Detect eaten pellets by diffing with previous tick
@@ -214,6 +216,11 @@ export class GameScreen {
 
         this.renderer.hud.addKillEvent(killerHandle, victimHandle)
         this.renderer.rain.addKill(killerHandle, victimHandle)
+
+        // Kill celebration toast for local player kills
+        if (killerId === this.playerId) {
+          this.renderer.hud.showKillToast(victimHandle, this.roomCode || '')
+        }
       },
       onDied: (stats) => {
         // Don't stop immediately — offer spectate
@@ -255,7 +262,12 @@ export class GameScreen {
       this.initOnline()
       try {
         await this.client!.connect(this.options.serverUrl!)
-        this.client!.join(this.options.roomCode || null, this.options.token, this.handle)
+        if (this.options.spectate) {
+          this.client!.spectate(this.options.roomCode || undefined)
+          this.spectating = true
+        } else {
+          this.client!.join(this.options.roomCode || null, this.options.token, this.handle)
+        }
       } catch (e) {
         console.error('[GameClient] failed to connect:', e)
         return
@@ -280,6 +292,7 @@ export class GameScreen {
     }
     this.removeSpectateOverlay()
     this.removeSpectateKeyListener()
+    this.renderer.hud.destroy()
   }
 
   // --- Spectate mode ---

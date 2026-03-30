@@ -1,3 +1,4 @@
+import { setLocale, clearCache } from '@chenglou/pretext'
 import { LandingScreen } from './screens/landing'
 import { DeathScreen } from './screens/death'
 import { GameScreen } from './screens/game'
@@ -21,6 +22,9 @@ resize()
 window.addEventListener('resize', resize)
 cursor.init()
 
+// Initialize pretext locale for future i18n / multilingual corpus support
+setLocale(navigator.language)
+
 async function main() {
   // Handle OAuth callback
   const params = new URLSearchParams(window.location.search)
@@ -37,12 +41,32 @@ async function main() {
 }
 
 function showLanding() {
-  const landing = new LandingScreen(canvas)
+  // Flush pretext font/variant caches between screen transitions
+  clearCache()
+  const landing = new LandingScreen(canvas, SERVER_URL)
   landing.show().then((result) => {
     if (result.action === 'play') {
       startGame(result.handle, result.token, result.room)
+    } else if (result.action === 'spectate') {
+      startSpectate(result.room)
     }
   })
+}
+
+function startSpectate(room?: string) {
+  const game = new GameScreen(canvas, 'spectator', {
+    mode: 'online',
+    serverUrl: `${SERVER_URL}/ws`,
+    roomCode: room || null,
+    token: undefined,
+    spectate: true,
+  })
+
+  game.setOnDeath(async () => {
+    showLanding()
+  })
+
+  game.start()
 }
 
 function startGame(handle: string, token?: string, room?: string) {
@@ -54,8 +78,10 @@ function startGame(handle: string, token?: string, room?: string) {
   })
 
   game.setOnDeath(async (stats) => {
+    // Flush pretext caches — game corpus text is no longer needed
+    clearCache()
     const death = new DeathScreen(canvas)
-    const action = await death.show(stats, game.roomCode || 'PUBLIC')
+    const action = await death.show(stats, game.roomCode || 'PUBLIC', `${SERVER_URL}/ws`)
     if (action === 'play') {
       startGame(handle, token, room)
     } else {
