@@ -1,6 +1,6 @@
 import type { DeathStats } from '@shared/protocol'
 
-const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://pretext.io'
+const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://pretextarena.io'
 
 export function buildShareUrl(
   type: 'death' | 'leaderboard' | 'invite' | 'challenge',
@@ -9,26 +9,27 @@ export function buildShareUrl(
 ): string {
   let text: string
   const url = roomCode ? `${BASE_URL}/r/${roomCode}` : BASE_URL
+  const killer = stats?.killedBy || 'the arena'
 
   switch (type) {
     case 'death':
       if (stats && stats.kills > 0) {
-        text = `Just devoured ${stats.kills} player${stats.kills > 1 ? 's' : ''} on pretext.io before ${stats.killedBy} got me`
+        text = `Just devoured ${stats.kills} player${stats.kills > 1 ? 's' : ''} on Pretext Arena before ${killer} got me`
       } else {
-        text = `Just got devoured by ${stats?.killedBy} on pretext.io`
+        text = `Just got devoured by ${killer} on Pretext Arena`
       }
       break
     case 'challenge':
-      text = `I'm coming for you ${stats?.killedBy} on pretext.io`
+      text = `I'm coming for you ${killer} on Pretext Arena`
       break
     case 'leaderboard':
-      text = 'Ruling the arena on pretext.io — come dethrone me'
+      text = 'Ruling the arena on Pretext Arena — come dethrone me'
       break
     case 'invite':
       text = `Who can eat me? ${url}`
       break
     default:
-      text = 'Playing pretext.io — you are your text'
+      text = 'Playing Pretext Arena — you are your text'
   }
 
   const intentUrl = new URL('https://x.com/intent/tweet')
@@ -46,22 +47,21 @@ export function httpFromWs(wsUrl: string): string {
   return wsUrl.replace(/^ws/, 'http').replace(/\/ws$/, '')
 }
 
-export async function generateShareCard(
+export function buildCardUrl(
   stats: DeathStats,
   roomCode: string,
   serverUrl: string,
-): Promise<string | null> {
-  try {
-    const httpUrl = serverUrl.replace(/^ws/, 'http').replace(/\/ws$/, '')
-    const res = await fetch(`${httpUrl}/card`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stats, roomCode }),
-    })
-    if (!res.ok) return null
-    const { cardUrl } = await res.json()
-    return cardUrl
-  } catch {
-    return null
-  }
+): string {
+  const httpUrl = serverUrl.replace(/^ws/, 'http').replace(/\/ws$/, '')
+  const payload = JSON.stringify({
+    h: stats.handle,
+    t: stats.timeAlive,
+    k: stats.kills,
+    p: stats.peakMass,
+    v: stats.victims.slice(0, 5),
+    b: stats.killedBy,
+    r: roomCode,
+  })
+  const encoded = btoa(payload).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  return `${httpUrl}/card/${encoded}`
 }

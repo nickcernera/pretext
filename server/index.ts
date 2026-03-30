@@ -7,7 +7,7 @@ import {
   exchangeCodeForToken, fetchUserInfo, createJWT,
   getTwitterAuthUrl,
 } from './auth'
-import { generateShareCard, storeCard, getCard } from './cards'
+import { generateShareCard, decodeCardPayload } from './cards'
 import { StatsTracker } from './stats'
 
 const PORT = Number(process.env.PORT) || 3001
@@ -109,37 +109,20 @@ const server = Bun.serve<WsData>({
 
     // --- Share card endpoint ---
 
-    // GET /card/:id — serve SVG share card
+    // GET /card/:encoded — render SVG card from base64url-encoded stats
     if (url.pathname.startsWith('/card/')) {
-      const id = url.pathname.slice(6)
-      const svg = getCard(id)
-      if (!svg) {
-        return corsResponse('Not found', { status: 404 })
+      const encoded = url.pathname.slice(6)
+      const decoded = decodeCardPayload(encoded)
+      if (!decoded) {
+        return corsResponse('Invalid card data', { status: 400 })
       }
+      const svg = generateShareCard(decoded.stats, decoded.roomCode)
       return corsResponse(svg, {
-        headers: { 'Content-Type': 'image/svg+xml' },
+        headers: {
+          'Content-Type': 'image/svg+xml',
+          'Cache-Control': 'public, max-age=86400',
+        },
       })
-    }
-
-    // POST /card — generate and store a share card
-    if (url.pathname === '/card' && req.method === 'POST') {
-      return (async () => {
-        try {
-          const body = await req.json()
-          const { stats, roomCode } = body as { stats: any; roomCode: string }
-          const svg = generateShareCard(stats, roomCode)
-          const cardId = storeCard(svg)
-          const cardUrl = `${url.origin}/card/${cardId}`
-          return corsResponse(JSON.stringify({ cardId, cardUrl }), {
-            headers: { 'Content-Type': 'application/json' },
-          })
-        } catch (e: any) {
-          return corsResponse(JSON.stringify({ error: e.message }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          })
-        }
-      })()
     }
 
     // WebSocket upgrade
@@ -274,4 +257,4 @@ setInterval(() => {
   roomManager.cleanup()
 }, 30_000)
 
-console.log(`pretext server running on :${server.port}`)
+console.log(`pretext arena server running on :${server.port}`)

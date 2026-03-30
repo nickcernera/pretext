@@ -1,5 +1,36 @@
 import type { DeathStats } from '../shared/protocol'
 
+type CardPayload = {
+  h: string   // handle
+  t: number   // timeAlive
+  k: number   // kills
+  p: number   // peakMass
+  v: string[] // victims
+  b: string   // killedBy
+  r: string   // roomCode
+}
+
+export function decodeCardPayload(encoded: string): { stats: DeathStats; roomCode: string } | null {
+  try {
+    const padded = encoded.replace(/-/g, '+').replace(/_/g, '/')
+    const json = atob(padded)
+    const data = JSON.parse(json) as CardPayload
+    return {
+      stats: {
+        handle: String(data.h || ''),
+        timeAlive: Number(data.t) || 0,
+        kills: Number(data.k) || 0,
+        peakMass: Number(data.p) || 0,
+        victims: Array.isArray(data.v) ? data.v.map(String) : [],
+        killedBy: String(data.b || ''),
+      },
+      roomCode: String(data.r || ''),
+    }
+  } catch {
+    return null
+  }
+}
+
 function escapeXml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -18,7 +49,7 @@ export function generateShareCard(stats: DeathStats, roomCode: string): string {
     ? stats.victims.slice(0, 5).map(escapeXml).join(', ')
     : 'none'
   const handle = escapeXml(stats.handle)
-  const killedBy = escapeXml(stats.killedBy)
+  const killedBy = escapeXml(stats.killedBy || 'the arena')
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
   <defs>
@@ -41,7 +72,7 @@ export function generateShareCard(stats: DeathStats, roomCode: string): string {
   <rect x="20" y="20" width="1160" height="635" rx="8" fill="none" stroke="#3a5a4a" stroke-width="1" opacity="0.5"/>
 
   <!-- Title -->
-  <text x="600" y="80" text-anchor="middle" font-family="'Space Grotesk', system-ui, sans-serif" font-size="28" fill="#4a7a5a">pretext</text>
+  <text x="600" y="80" text-anchor="middle" font-family="'Space Grotesk', system-ui, sans-serif" font-size="28" fill="#4a7a5a">pretext arena</text>
 
   <!-- Handle -->
   <text x="600" y="180" text-anchor="middle" font-family="'Space Grotesk', system-ui, sans-serif" font-size="64" font-weight="700" fill="#d0ffe0">${handle}</text>
@@ -64,20 +95,7 @@ export function generateShareCard(stats: DeathStats, roomCode: string): string {
   <text x="600" y="510" text-anchor="middle" font-family="'Space Mono', monospace" font-size="18" fill="#d0ffe0">${victimsStr}</text>
 
   <!-- Footer -->
-  <text x="600" y="620" text-anchor="middle" font-family="'Space Mono', monospace" font-size="16" fill="#4a7a5a">pretext.io${roomCode ? ' / ' + escapeXml(roomCode) : ''}</text>
+  <text x="600" y="610" text-anchor="middle" font-family="'Space Mono', monospace" font-size="16" fill="#4a7a5a">pretextarena.io${roomCode ? ' / ' + escapeXml(roomCode) : ''}</text>
+  <text x="600" y="640" text-anchor="middle" font-family="'Space Mono', monospace" font-size="11" fill="#3a5a4a">by Cernera Design · powered by Pretext</text>
 </svg>`
-}
-
-// In-memory card store
-const cards = new Map<string, string>()
-let nextCardId = 1
-
-export function storeCard(svg: string): string {
-  const id = String(nextCardId++)
-  cards.set(id, svg)
-  return id
-}
-
-export function getCard(id: string): string | undefined {
-  return cards.get(id)
 }

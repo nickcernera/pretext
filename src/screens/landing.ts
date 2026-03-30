@@ -38,6 +38,7 @@ export class LandingScreen {
   private lastTime = 0
   private container: HTMLDivElement | null = null
   private panel: HTMLDivElement | null = null
+  private footer: HTMLDivElement | null = null
   private seaPrepared: PreparedTextWithSegments | null = null
   private serverUrl: string
   private activityInterval: ReturnType<typeof setInterval> | null = null
@@ -76,16 +77,19 @@ export class LandingScreen {
     })
   }
 
-  private getUIExclusionRect(): { x: number; y: number; w: number; h: number } | null {
-    if (!this.panel) return null
-    const rect = this.panel.getBoundingClientRect()
-    const pad = 8
-    return {
-      x: rect.left - pad,
-      y: rect.top - pad,
-      w: rect.width + pad * 2,
-      h: rect.height + pad * 2,
+  private getUIExclusionRects(): { x: number; y: number; w: number; h: number; cr: number }[] {
+    const rects: { x: number; y: number; w: number; h: number; cr: number }[] = []
+    if (this.panel) {
+      const rect = this.panel.getBoundingClientRect()
+      const pad = 8
+      rects.push({ x: rect.left - pad, y: rect.top - pad, w: rect.width + pad * 2, h: rect.height + pad * 2, cr: 48 })
     }
+    if (this.footer) {
+      const rect = this.footer.getBoundingClientRect()
+      const pad = 12
+      rects.push({ x: rect.left - pad, y: rect.top - pad, w: rect.width + pad * 2, h: rect.height + pad * 2, cr: (rect.height + pad * 2) / 2 })
+    }
+    return rects
   }
 
   private startBackground() {
@@ -108,7 +112,7 @@ export class LandingScreen {
   private drawSea(ctx: CanvasRenderingContext2D, sw: number, sh: number) {
     if (!this.seaPrepared) return
 
-    const exclusion = this.getUIExclusionRect()
+    const exclusions = this.getUIExclusionRects()
     ctx.font = SEA_FONT
     ctx.textBaseline = 'top'
 
@@ -121,11 +125,11 @@ export class LandingScreen {
 
       let spans: Span[] = [{ left: 8, right: sw - 8, align: 'left' }]
 
-      // Exclude the UI panel area (rounded rect)
-      if (exclusion) {
+      // Exclude UI element areas (rounded rects)
+      for (const exclusion of exclusions) {
         const midY = (lineTop + lineBottom) / 2
         if (midY > exclusion.y && midY < exclusion.y + exclusion.h) {
-          const cr = 48
+          const cr = exclusion.cr
           let inset = 0
           if (midY < exclusion.y + cr) {
             const dy = exclusion.y + cr - midY
@@ -160,9 +164,9 @@ export class LandingScreen {
         const midX = (span.left + span.right) / 2
         const midY = (lineTop + lineBottom) / 2
 
-        // Brighter near the UI exclusion — min distance between span rect and panel rect
+        // Brighter near UI exclusions — min distance between span rect and each exclusion rect
         let alpha = 0.08
-        if (exclusion) {
+        for (const exclusion of exclusions) {
           const dx = Math.max(0, exclusion.x - span.right, span.left - (exclusion.x + exclusion.w))
           const dy = Math.max(0, exclusion.y - lineBottom, lineTop - (exclusion.y + exclusion.h))
           const dist = Math.sqrt(dx * dx + dy * dy)
@@ -231,7 +235,7 @@ export class LandingScreen {
 
     // Title
     const title = document.createElement('h1')
-    title.textContent = 'pretext'
+    title.textContent = 'pretext arena'
     title.style.cssText = `
       font-family: ${BLOB_FONT_FAMILY}; font-size: 64px; font-weight: 700;
       color: #d0ffe0; margin: 0 0 4px 0; letter-spacing: -2px;
@@ -258,6 +262,7 @@ export class LandingScreen {
     const cleanup = () => {
       if (this.rafId) { cancelAnimationFrame(this.rafId); this.rafId = 0 }
       if (this.activityInterval) { clearInterval(this.activityInterval); this.activityInterval = null }
+      this.footer = null
       if (this.container?.parentNode) { this.container.parentNode.removeChild(this.container); this.container = null }
     }
 
@@ -488,6 +493,37 @@ export class LandingScreen {
     }
 
     container.appendChild(panel)
+
+    // Attribution footer
+    const footer = document.createElement('div')
+    this.footer = footer
+    footer.style.cssText = `
+      position: fixed; bottom: 16px; left: 0; right: 0;
+      display: flex; justify-content: center; align-items: center; gap: 12px;
+      pointer-events: auto; z-index: 11;
+    `
+    const makeFooterLink = (text: string, href: string): HTMLAnchorElement => {
+      const a = document.createElement('a')
+      a.textContent = text
+      a.href = href
+      a.target = '_blank'
+      a.rel = 'noopener'
+      a.style.cssText = `
+        font-family: ${UI_FONT_FAMILY}; font-size: 11px; color: #3a5a4a;
+        text-decoration: underline; text-underline-offset: 3px;
+        text-decoration-color: #2a3a2a; transition: color 0.15s, text-decoration-color 0.15s;
+      `
+      a.addEventListener('mouseenter', () => { a.style.color = '#4a7a5a'; a.style.textDecorationColor = '#4a7a5a' })
+      a.addEventListener('mouseleave', () => { a.style.color = '#3a5a4a'; a.style.textDecorationColor = '#2a3a2a' })
+      return a
+    }
+    footer.appendChild(makeFooterLink('Created by Cernera Design', 'https://x.com/cerneradesign'))
+    const sep = document.createElement('span')
+    sep.textContent = '\u00b7'
+    sep.style.cssText = `font-size: 11px; color: #2a3a2a;`
+    footer.appendChild(sep)
+    footer.appendChild(makeFooterLink('Powered by Pretext', 'https://github.com/chenglou/pretext'))
+    container.appendChild(footer)
 
     const uiRoot = document.getElementById('ui-root')
     if (uiRoot) {

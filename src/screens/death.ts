@@ -1,7 +1,7 @@
 import { drawBackground } from '../game/background'
 import { BLOB_FONT_FAMILY, UI_FONT_FAMILY, RAIN_COLOR } from '@shared/constants'
 import type { DeathStats } from '@shared/protocol'
-import { buildShareUrl, generateShareCard } from '../share'
+import { buildShareUrl, buildCardUrl } from '../share'
 
 export class DeathScreen {
   private canvas: HTMLCanvasElement
@@ -59,8 +59,9 @@ export class DeathScreen {
     `
 
     // "devoured by" label
+    const killer = stats.killedBy || 'the arena'
     const devouredLabel = document.createElement('p')
-    devouredLabel.textContent = `devoured by ${stats.killedBy}`
+    devouredLabel.textContent = `devoured by ${killer}`
     devouredLabel.style.cssText = `
       font-family: ${UI_FONT_FAMILY}; font-size: 14px; color: #4a7a5a;
       margin: 0 0 12px 0;
@@ -141,16 +142,13 @@ export class DeathScreen {
     cardPreview.style.cssText = 'margin-bottom: 20px; opacity: 0; transition: opacity 0.3s;'
     container.appendChild(cardPreview)
 
-    // Generate card async
-    generateShareCard(stats, roomCode, serverUrl).then(cardUrl => {
-      if (cardUrl) {
-        const img = document.createElement('img')
-        img.src = cardUrl
-        img.style.cssText = 'width: 400px; max-width: 90vw; border-radius: 8px; border: 1px solid #3a5a4a;'
-        cardPreview.appendChild(img)
-        cardPreview.style.opacity = '1'
-      }
-    })
+    // Card preview (deterministic URL — no POST needed, survives restarts)
+    const cardUrl = buildCardUrl(stats, roomCode, serverUrl)
+    const img = document.createElement('img')
+    img.src = cardUrl
+    img.style.cssText = 'width: 400px; max-width: 90vw; border-radius: 8px; border: 1px solid #3a5a4a;'
+    img.onload = () => { cardPreview.style.opacity = '1' }
+    cardPreview.appendChild(img)
 
     // Buttons
     const btnRow = document.createElement('div')
@@ -194,7 +192,7 @@ export class DeathScreen {
 
     // Challenge killer button
     const challengeBtn = document.createElement('button')
-    challengeBtn.textContent = `Challenge ${stats.killedBy}`
+    challengeBtn.textContent = `Challenge ${killer}`
     challengeBtn.style.cssText = `
       font-family: ${UI_FONT_FAMILY}; font-size: 12px; color: #4a7a5a;
       background: none; border: 1px solid #2a3a2a; border-radius: 4px;
@@ -227,7 +225,7 @@ export class DeathScreen {
     coffeeLink.href = 'https://buymeacoffee.com/nickcernera'
     coffeeLink.target = '_blank'
     coffeeLink.rel = 'noopener'
-    coffeeLink.textContent = 'Enjoying pretext? \u2615'
+    coffeeLink.textContent = 'Enjoying Pretext Arena? \u2615'
     coffeeLink.style.cssText = `
       font-family: ${UI_FONT_FAMILY}; font-size: 11px; color: #3a5a4a;
       text-decoration: none; opacity: 0.6;
@@ -235,6 +233,34 @@ export class DeathScreen {
     coffeeLink.addEventListener('mouseenter', () => { coffeeLink.style.opacity = '1' })
     coffeeLink.addEventListener('mouseleave', () => { coffeeLink.style.opacity = '0.6' })
     container.appendChild(coffeeLink)
+
+    // Attribution footer
+    const footer = document.createElement('div')
+    footer.style.cssText = `
+      position: fixed; bottom: 16px; left: 0; right: 0;
+      display: flex; justify-content: center; align-items: center; gap: 12px;
+    `
+    const makeFooterLink = (text: string, href: string): HTMLAnchorElement => {
+      const a = document.createElement('a')
+      a.textContent = text
+      a.href = href
+      a.target = '_blank'
+      a.rel = 'noopener'
+      a.style.cssText = `
+        font-family: ${UI_FONT_FAMILY}; font-size: 11px; color: #3a5a4a;
+        text-decoration: none; transition: color 0.15s;
+      `
+      a.addEventListener('mouseenter', () => { a.style.color = '#4a7a5a' })
+      a.addEventListener('mouseleave', () => { a.style.color = '#3a5a4a' })
+      return a
+    }
+    footer.appendChild(makeFooterLink('Created by Cernera Design', 'https://x.com/cerneradesign'))
+    const sep = document.createElement('span')
+    sep.textContent = '\u00b7'
+    sep.style.cssText = `font-size: 11px; color: #2a3a2a;`
+    footer.appendChild(sep)
+    footer.appendChild(makeFooterLink('Powered by Pretext', 'https://github.com/chenglou/pretext'))
+    container.appendChild(footer)
 
     const uiRoot = document.getElementById('ui-root')
     if (uiRoot) {
