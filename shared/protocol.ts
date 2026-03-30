@@ -9,7 +9,7 @@ export type ClientMessage =
 // --- Server → Client ---
 export type ServerMessage =
   | { t: 'joined'; room: string; playerId: string; world: { w: number; h: number } }
-  | { t: 'state'; players: PlayerState[]; pellets: PelletState[] }
+  | { t: 'state'; players: PlayerState[]; pellets: PelletState[]; pAdd?: PelletState[]; pRem?: number[] }
   | { t: 'kill'; killerId: string; victimId: string; killerHandle: string; victimHandle: string }
   | { t: 'died'; stats: DeathStats }
   | { t: 'leaderboard'; entries: LeaderboardEntry[]; isSnapshot: boolean }

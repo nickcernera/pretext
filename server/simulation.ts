@@ -67,6 +67,7 @@ export class Simulation {
   private interval: ReturnType<typeof setInterval> | null = null
   private roomManager: RoomManager
   private stats: StatsTracker
+  private lastPelletIds = new Map<string, Set<number>>() // roomCode → pellet IDs last broadcast
 
   constructor(roomManager: RoomManager, stats: StatsTracker) {
     this.roomManager = roomManager
@@ -80,10 +81,19 @@ export class Simulation {
       const rooms = this.roomManager.allRooms()
       this.stats.roomCount = rooms.length
       for (const room of rooms) {
+        const hasAudience = room.realPlayerCount() > 0 || room.spectators.size > 0
+        if (!hasAudience) continue // skip bot-only rooms entirely
         fillBots(room)
         this.tickRoom(room, dt)
         this.broadcastState(room)
         this.broadcastLeaderboard(room)
+      }
+      // Prune pellet delta tracking for deleted rooms
+      if (this.lastPelletIds.size > rooms.length + 10) {
+        const activeCodes = new Set(rooms.map(r => r.code))
+        for (const code of this.lastPelletIds.keys()) {
+          if (!activeCodes.has(code)) this.lastPelletIds.delete(code)
+        }
       }
       this.stats.onTick(performance.now() - tickStart)
     }, TICK_MS)
@@ -362,16 +372,37 @@ export class Simulation {
       }
     })
 
-    const pellets: PelletState[] = room.pellets
-    const msg: ServerMessage = { t: 'state', players, pellets }
-    const json = JSON.stringify(msg)
+    // Pellet delta compression: only send added/removed since last broadcast
+    const currentIds = new Set(room.pellets.map(p => p.id))
+    const prevIds = this.lastPelletIds.get(room.code)
 
+    let msg: ServerMessage
+    if (!prevIds) {
+      // First broadcast for this room — send full pellets
+      msg = { t: 'state', players, pellets: room.pellets }
+    } else {
+      const pAdd: PelletState[] = []
+      const pRem: number[] = []
+      for (const p of room.pellets) {
+        if (!prevIds.has(p.id)) pAdd.push(p)
+      }
+      for (const id of prevIds) {
+        if (!currentIds.has(id)) pRem.push(id)
+      }
+      if (pAdd.length === 0 && pRem.length === 0) {
+        msg = { t: 'state', players, pellets: [] }
+      } else {
+        msg = { t: 'state', players, pellets: [], pAdd, pRem }
+      }
+    }
+    this.lastPelletIds.set(room.code, currentIds)
+
+    const json = JSON.stringify(msg)
     for (const p of room.players.values()) {
       if (p.ws) {
         try { p.ws.send(json) } catch { /* closed */ }
       }
     }
-    // Also send to spectators
     for (const ws of room.spectators) {
       try { ws.send(json) } catch { room.spectators.delete(ws) }
     }

@@ -179,10 +179,30 @@ export class GameScreen {
         this.renderer.hud.setRoomCode(room)
         this.renderer.hud.setupKeyListeners(room)
       },
-      onState: (players, pellets) => {
+      onState: (players, pellets, pAdd, pRem) => {
+        // Apply pellet delta or full sync
+        let resolvedPellets: PelletState[]
+        if (pellets.length > 0) {
+          // Full pellet sync (first tick or reconnect)
+          resolvedPellets = pellets
+        } else if (pAdd || pRem) {
+          // Delta update
+          resolvedPellets = this.onlinePellets
+          if (pRem && pRem.length > 0) {
+            const removeSet = new Set(pRem)
+            resolvedPellets = resolvedPellets.filter(p => !removeSet.has(p.id))
+          }
+          if (pAdd && pAdd.length > 0) {
+            resolvedPellets = resolvedPellets.concat(pAdd)
+          }
+        } else {
+          // No pellet changes this tick
+          resolvedPellets = this.onlinePellets
+        }
+
         // Detect eaten pellets by diffing with previous tick
         if (this.onlinePellets.length > 0 && players.length > 0) {
-          const currentIds = new Set(pellets.map(p => p.id))
+          const currentIds = new Set(resolvedPellets.map(p => p.id))
           for (const prev of this.onlinePellets) {
             if (!currentIds.has(prev.id)) {
               // Find nearest player cell
@@ -206,9 +226,9 @@ export class GameScreen {
         }
 
         this.onlinePlayers = players
-        this.onlinePellets = pellets
+        this.onlinePellets = resolvedPellets
         this.interpolator!.update(players)
-        this.renderer.pellets.setPellets(pellets)
+        this.renderer.pellets.setPellets(resolvedPellets)
 
         const handles = players.map(p => p.handle)
         this.renderer.rain.setHandles(handles)

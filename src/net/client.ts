@@ -2,7 +2,7 @@ import type { ClientMessage, ServerMessage, PlayerState, PelletState, DeathStats
 
 export type GameEvents = {
   onJoined: (room: string, playerId: string, world: { w: number; h: number }) => void
-  onState: (players: PlayerState[], pellets: PelletState[]) => void
+  onState: (players: PlayerState[], pellets: PelletState[], pAdd?: PelletState[], pRem?: number[]) => void
   onKill: (killerId: string, victimId: string, killerHandle: string, victimHandle: string) => void
   onDied: (stats: DeathStats) => void
   onLeaderboard: (entries: LeaderboardEntry[], isSnapshot: boolean) => void
@@ -28,7 +28,7 @@ export class GameClient {
           const msg = JSON.parse(e.data) as ServerMessage
           switch (msg.t) {
             case 'joined': this.events.onJoined(msg.room, msg.playerId, msg.world); break
-            case 'state': this.events.onState(msg.players, msg.pellets); break
+            case 'state': this.events.onState(msg.players, msg.pellets, msg.pAdd, msg.pRem); break
             case 'kill': this.events.onKill(msg.killerId, msg.victimId, msg.killerHandle, msg.victimHandle); break
             case 'died': this.events.onDied(msg.stats); break
             case 'leaderboard': this.events.onLeaderboard(msg.entries, msg.isSnapshot); break

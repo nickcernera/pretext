@@ -7,7 +7,7 @@ COPY server/ ./server/
 
 RUN bun install --production
 
-RUN adduser -D appuser
+RUN useradd -r -s /bin/false appuser
 USER appuser
 
 EXPOSE 3001
