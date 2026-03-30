@@ -14,6 +14,7 @@ type InterpolatedPlayer = {
   id: string
   handle: string
   color: string
+  avatar: string
   cells: Map<number, InterpolatedCell>
 }
 
@@ -33,6 +34,7 @@ export class StateInterpolator {
           id: sp.id,
           handle: sp.handle,
           color: sp.color,
+          avatar: sp.avatar,
           cells: new Map(),
         }
         this.players.set(sp.id, existing)
@@ -40,6 +42,7 @@ export class StateInterpolator {
 
       existing.handle = sp.handle
       existing.color = sp.color
+      existing.avatar = sp.avatar
 
       // Update cell targets
       const seenCells = new Set<number>()
@@ -107,6 +110,7 @@ export class StateInterpolator {
         y: cy,
         mass: totalMass,
         color: p.color,
+        avatar: p.avatar,
         cells,
       })
     }
