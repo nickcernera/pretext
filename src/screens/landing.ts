@@ -1,22 +1,12 @@
 import { prepareWithSegments, layoutNextLine, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
 import { drawBackground } from '../game/background'
 import { BLOB_FONT_FAMILY, UI_FONT_FAMILY, BG_COLOR, RAIN_COLOR } from '@shared/constants'
+import { SEA_WORDS } from '@shared/words'
 import { getStoredUser, startXAuth, logout } from '../auth'
 import { cursor as customCursor } from '../game/cursor'
 
 const SEA_FONT = `12px ${UI_FONT_FAMILY}`
 const SEA_LINE_HEIGHT = 18
-
-const SEA_WORDS = [
-  'transformer', 'attention', 'gradient∇', 'softmax', 'backprop',
-  'embeddings', 'CUDA', 'inference', 'tokenizer', 'hallucinate',
-  'latency:0.09ms', 'pid:4847', '0x7fff', 'batch_size=32',
-  'epoch', 'loss=0.003', 'checkpoint', 'tensor', 'dropout',
-  'optimizer', 'scheduler', 'normalize', 'pooling', 'residual',
-  'malloc', 'fork()', 'pipe', 'mutex', 'semaphore',
-  'heap', 'stack', 'queue', 'btree', 'hashmap',
-  '∂f/∂x', '∫dx', 'Σ', 'λ', '∞', '@pretext',
-]
 
 type Span = { left: number; right: number; align: 'left' | 'right' }
 

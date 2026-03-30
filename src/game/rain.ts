@@ -1,19 +1,6 @@
 import { prepareWithSegments, layoutNextLine, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
 import { UI_FONT_FAMILY, RAIN_COLOR, WORLD_W, WORLD_H } from '@shared/constants'
-
-const SEED_WORDS = [
-  'transformer', 'attention', 'gradient∇', 'softmax', 'backprop',
-  'embeddings', 'CUDA', 'inference', 'tokenizer', 'hallucinate',
-  'latency:0.09ms', 'pid:4847', '0x7fff', 'batch_size=32',
-  'epoch', 'loss=0.003', 'checkpoint', 'tensor', 'dropout',
-  'learning_rate', 'conv2d', 'relu', 'sigmoid', 'entropy',
-  'optimizer', 'scheduler', 'normalize', 'pooling', 'residual',
-  'conn.established', 'ACK', 'SYN', 'RST', 'TTL=64',
-  'malloc', 'fork()', 'pipe', 'mutex', 'semaphore',
-  'heap', 'stack', 'queue', 'btree', 'hashmap',
-  'tcp.syn', 'udp', 'http/2', 'tls1.3', 'dns',
-  '∂f/∂x', '∫dx', 'Σ', 'λ', '∞',
-]
+import { SEA_WORDS as SEED_WORDS } from '@shared/words'
 
 const FONT = `12px ${UI_FONT_FAMILY}`
 const LINE_HEIGHT = 18
