@@ -7,7 +7,7 @@ COPY server/ ./server/
 
 RUN bun install --production
 
-RUN adduser --disabled-password --gecos "" appuser
+RUN adduser -D appuser
 USER appuser
 
 EXPOSE 3001
