@@ -37,6 +37,7 @@ export type GameOptions = {
 
 export class GameScreen {
   onDeath: ((stats: DeathStats) => void) | null = null
+  roomCode: string | null = null
 
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
@@ -107,6 +108,7 @@ export class GameScreen {
     this.client = new GameClient({
       onJoined: (room, playerId, _world) => {
         this.playerId = playerId
+        this.roomCode = room
         this.renderer.hud.setRoomCode(room)
       },
       onState: (players, pellets) => {
@@ -133,8 +135,12 @@ export class GameScreen {
           this.onDeath(stats)
         }
       },
-      onLeaderboard: (entries, _isSnapshot) => {
+      onLeaderboard: (entries, isSnapshot) => {
         this.renderer.hud.setLeaderboard(entries)
+        // If this is a snapshot and we're #1, show share toast
+        if (isSnapshot && entries.length > 0 && entries[0].handle === this.handle) {
+          this.renderer.hud.showSnapshotToast(this.handle, this.roomCode || 'PUBLIC')
+        }
       },
       onError: (msg) => {
         console.error('[GameClient] error:', msg)
