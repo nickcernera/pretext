@@ -12,7 +12,7 @@ import {
   MAX_CELLS, MERGE_TIME, TICK_RATE,
 } from '@shared/constants'
 import {
-  handleToColor, massToRadius,
+  handleToColor, massToRadius, pelletRadius,
   type PlayerState, type PelletState, type CellState, type DeathStats, type LeaderboardEntry,
 } from '@shared/protocol'
 import { triggerSpasm } from '../game/blob'
@@ -125,6 +125,8 @@ export class GameScreen {
   // Spectate mode
   private spectating = false
   private spectateOverlay: HTMLDivElement | null = null
+  private spectateTargetId: string | null = null
+  private spectateNameEl: HTMLSpanElement | null = null
   private pendingDeathStats: DeathStats | null = null
 
   private startTime = 0
@@ -277,40 +279,71 @@ export class GameScreen {
       this.client = null
     }
     this.removeSpectateOverlay()
-    this.removeEscListener()
+    this.removeSpectateKeyListener()
   }
 
   // --- Spectate mode ---
 
   private showSpectateOverlay(stats: DeathStats) {
     this.spectating = true
+    this.spectateTargetId = null // will pick largest on first frame
 
     const overlay = document.createElement('div')
     this.spectateOverlay = overlay
     overlay.style.cssText = `
       position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
-      display: flex; gap: 12px; z-index: 20;
+      display: flex; align-items: center; gap: 0; z-index: 20;
       font-family: "Space Mono", monospace;
     `
 
-    const makeBtn = (text: string, primary: boolean): HTMLButtonElement => {
+    const makeBtn = (text: string, opts: { primary?: boolean; nav?: boolean } = {}): HTMLButtonElement => {
       const btn = document.createElement('button')
       btn.textContent = text
+      const bg = opts.primary ? '#1a2a1a' : 'transparent'
+      const border = opts.primary ? '#00ff41' : '#3a5a4a'
+      const color = opts.primary ? '#d0ffe0' : '#4a7a5a'
+      const padding = opts.nav ? '10px 14px' : '10px 24px'
       btn.style.cssText = `
-        font-family: "Space Mono", monospace; font-size: 13px; padding: 10px 24px;
-        border: 1px solid ${primary ? '#00ff41' : '#3a5a4a'}; border-radius: 4px;
-        background: ${primary ? '#1a2a1a' : 'transparent'}; color: ${primary ? '#d0ffe0' : '#4a7a5a'};
+        font-family: "Space Mono", monospace; font-size: 13px; padding: ${padding};
+        border: 1px solid ${border}; border-radius: 4px;
+        background: ${bg}; color: ${color};
         cursor: pointer; transition: all 0.15s;
       `
+      btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#00ff41'; btn.style.color = '#d0ffe0' })
+      btn.addEventListener('mouseleave', () => { btn.style.borderColor = border; btn.style.color = color })
       return btn
     }
 
-    const spectateBtn = makeBtn('Spectating...', true)
-    spectateBtn.style.pointerEvents = 'none'
-    spectateBtn.style.opacity = '0.6'
-    overlay.appendChild(spectateBtn)
+    // Nav group: [<] [Player Name] [>]
+    const navGroup = document.createElement('div')
+    navGroup.style.cssText = 'display: flex; align-items: center; gap: 0; margin-right: 12px;'
 
-    const exitBtn = makeBtn('Exit (ESC)', false)
+    const prevBtn = makeBtn('\u2190', { nav: true })
+    prevBtn.style.borderRadius = '4px 0 0 4px'
+    prevBtn.style.borderRight = 'none'
+    prevBtn.addEventListener('click', () => this.spectateSwitch(-1))
+    navGroup.appendChild(prevBtn)
+
+    const nameEl = document.createElement('span')
+    nameEl.textContent = 'Spectating...'
+    nameEl.style.cssText = `
+      font-family: "Space Mono", monospace; font-size: 13px;
+      padding: 10px 20px; border: 1px solid #00ff41; border-left: none; border-right: none;
+      background: #1a2a1a; color: #d0ffe0; white-space: nowrap;
+      min-width: 120px; text-align: center;
+    `
+    this.spectateNameEl = nameEl
+    navGroup.appendChild(nameEl)
+
+    const nextBtn = makeBtn('\u2192', { nav: true })
+    nextBtn.style.borderRadius = '0 4px 4px 0'
+    nextBtn.style.borderLeft = 'none'
+    nextBtn.addEventListener('click', () => this.spectateSwitch(1))
+    navGroup.appendChild(nextBtn)
+
+    overlay.appendChild(navGroup)
+
+    const exitBtn = makeBtn('Exit (ESC)', {})
     exitBtn.addEventListener('click', () => this.exitSpectate())
     overlay.appendChild(exitBtn)
 
@@ -318,19 +351,48 @@ export class GameScreen {
     if (uiRoot) uiRoot.appendChild(overlay)
     else document.body.appendChild(overlay)
 
-    // ESC key handler
-    this.escHandler = (e: KeyboardEvent) => {
+    // Key handlers
+    this.spectateKeyHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') this.exitSpectate()
+      else if (e.key === 'ArrowLeft') this.spectateSwitch(-1)
+      else if (e.key === 'ArrowRight') this.spectateSwitch(1)
     }
-    window.addEventListener('keydown', this.escHandler)
+    window.addEventListener('keydown', this.spectateKeyHandler)
   }
 
-  private escHandler: ((e: KeyboardEvent) => void) | null = null
+  private spectateKeyHandler: ((e: KeyboardEvent) => void) | null = null
 
-  private removeEscListener() {
-    if (this.escHandler) {
-      window.removeEventListener('keydown', this.escHandler)
-      this.escHandler = null
+  /** Get sorted player list for spectate cycling (by mass descending) */
+  private getSpectatePlayers(): PlayerState[] {
+    const players = this.interpolator?.getInterpolated(0) ?? []
+    return [...players].sort((a, b) => b.mass - a.mass)
+  }
+
+  private spectateSwitch(dir: -1 | 1) {
+    const players = this.getSpectatePlayers()
+    if (players.length === 0) return
+
+    const currentIdx = players.findIndex(p => p.id === this.spectateTargetId)
+    let nextIdx: number
+    if (currentIdx === -1) {
+      nextIdx = 0
+    } else {
+      nextIdx = (currentIdx + dir + players.length) % players.length
+    }
+    this.spectateTargetId = players[nextIdx].id
+    this.updateSpectateName(players[nextIdx].handle)
+  }
+
+  private updateSpectateName(handle: string) {
+    if (this.spectateNameEl) {
+      this.spectateNameEl.textContent = handle
+    }
+  }
+
+  private removeSpectateKeyListener() {
+    if (this.spectateKeyHandler) {
+      window.removeEventListener('keydown', this.spectateKeyHandler)
+      this.spectateKeyHandler = null
     }
   }
 
@@ -339,12 +401,14 @@ export class GameScreen {
       this.spectateOverlay.parentNode.removeChild(this.spectateOverlay)
     }
     this.spectateOverlay = null
+    this.spectateNameEl = null
   }
 
   private exitSpectate() {
     this.spectating = false
+    this.spectateTargetId = null
     this.removeSpectateOverlay()
-    this.removeEscListener()
+    this.removeSpectateKeyListener()
     this.stop()
     if (this.pendingDeathStats && this.onDeath) {
       this.onDeath(this.pendingDeathStats)
@@ -544,6 +608,11 @@ export class GameScreen {
     const playerPS = toPlayerState(this.localPlayer)
     const allPlayers: PlayerState[] = [playerPS, ...this.bots.map(toPlayerState)]
 
+    // Feed local cell positions to pellet renderer for magnetism + glow
+    this.renderer.pellets.setLocalCells(
+      this.localPlayer.cells.map(c => ({ x: c.x, y: c.y, radius: massToRadius(c.mass) }))
+    )
+
     this.playerTexts.set(this.playerId, this.playerTexts.get(this.playerId) || this.handle)
     for (const bot of this.bots) {
       if (!this.playerTexts.has(bot.id)) {
@@ -610,17 +679,51 @@ export class GameScreen {
       }
     }
 
-    // During spectate, follow the top player
+    // Client-side eat prediction: hide pellets the local player is about to eat
+    const localInterp = interpolated.find(p => p.id === this.playerId)
+    let visiblePellets = this.onlinePellets
+    if (localInterp && !this.spectating) {
+      visiblePellets = this.onlinePellets.filter(pellet => {
+        for (const c of localInterp.cells) {
+          const cr = massToRadius(c.mass)
+          const pr = pelletRadius(pellet.word)
+          const dx = c.x - pellet.x
+          const dy = c.y - pellet.y
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          if (dist < cr + pr) return false
+        }
+        return true
+      })
+      this.renderer.pellets.setLocalCells(
+        localInterp.cells.map(c => ({ x: c.x, y: c.y, radius: massToRadius(c.mass) }))
+      )
+    } else {
+      this.renderer.pellets.setLocalCells([])
+    }
+    this.renderer.pellets.setPellets(visiblePellets)
+
+    // During spectate, follow the selected player (or pick largest if none selected)
     let viewPlayerId = this.playerId
     if (this.spectating && interpolated.length > 0) {
-      // Find largest player
-      let maxMass = 0
-      for (const p of interpolated) {
-        if (p.mass > maxMass) {
-          maxMass = p.mass
-          viewPlayerId = p.id
+      // If target left the game, reset to null
+      if (this.spectateTargetId && !interpolated.find(p => p.id === this.spectateTargetId)) {
+        this.spectateTargetId = null
+      }
+      // Pick largest if no target selected
+      if (!this.spectateTargetId) {
+        let maxMass = 0
+        for (const p of interpolated) {
+          if (p.mass > maxMass) {
+            maxMass = p.mass
+            this.spectateTargetId = p.id
+          }
+        }
+        if (this.spectateTargetId) {
+          const target = interpolated.find(p => p.id === this.spectateTargetId)
+          if (target) this.updateSpectateName(target.handle)
         }
       }
+      if (this.spectateTargetId) viewPlayerId = this.spectateTargetId
     }
 
     this.renderer.draw(this.ctx, sw, sh, interpolated, viewPlayerId, this.playerTexts, now)
@@ -635,7 +738,7 @@ export class GameScreen {
       const dx = cell.x - p.x
       const dy = cell.y - p.y
       const dist = Math.sqrt(dx * dx + dy * dy)
-      if (dist < radius) {
+      if (dist < radius + pelletRadius(p.word)) {
         cell.mass += p.word.length * PELLET_MASS_PER_CHAR
         const existing = this.playerTexts.get(entityId) || ''
         this.playerTexts.set(entityId, existing + ' ' + p.word)
