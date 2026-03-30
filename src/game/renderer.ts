@@ -92,7 +92,7 @@ export class Renderer {
     const sorted = [...players].sort((a, b) => b.mass - a.mass)
     for (const p of sorted) {
       const text = playerTexts.get(p.id) || p.handle
-      drawBlob(ctx, p.x, p.y, p.mass, text, p.color, p.id === localPlayerId)
+      drawBlob(ctx, p.x, p.y, p.mass, text, p.color, p.id === localPlayerId, p.handle, p.id, dt)
     }
 
     // 9. Restore to screen space
