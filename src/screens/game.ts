@@ -263,6 +263,7 @@ export class GameScreen {
         console.warn('[GameClient] disconnected')
         if (!this.spectating) {
           this.stop()
+          this.showConnectionError('Connection lost. Returning to lobby...')
         }
       },
     })
@@ -293,6 +294,7 @@ export class GameScreen {
         }
       } catch (e) {
         console.error('[GameClient] failed to connect:', e)
+        this.showConnectionError('Failed to connect to server. Returning to lobby...')
         return
       }
     } else {
@@ -316,6 +318,26 @@ export class GameScreen {
     this.removeSpectateOverlay()
     this.removeSpectateKeyListener()
     this.renderer.hud.destroy()
+  }
+
+  private showConnectionError(message: string) {
+    const toast = document.createElement('div')
+    toast.textContent = message
+    toast.style.cssText = `
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      font-family: "Space Mono", monospace; font-size: 14px; color: #ff4141;
+      background: rgba(10, 20, 14, 0.95); border: 1px solid #ff4141;
+      padding: 16px 24px; border-radius: 6px; z-index: 30;
+    `
+    const uiRoot = document.getElementById('ui-root') || document.body
+    uiRoot.appendChild(toast)
+    setTimeout(() => {
+      toast.remove()
+      this.onDeath?.({
+        handle: this.handle, timeAlive: 0, kills: 0,
+        peakMass: 0, victims: [], killedBy: '',
+      })
+    }, 2000)
   }
 
   // --- Spectate mode ---
