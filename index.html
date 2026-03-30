@@ -2,33 +2,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Flow — Pretext Text River</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>pretext</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0a; }
-      canvas { display: block; cursor: default; }
-      #ui {
-        position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-        display: flex; gap: 8px; z-index: 10;
-      }
-      #ui button {
-        padding: 8px 16px; border: 1px solid #333; border-radius: 6px;
-        background: #1a1a1a; color: #999; font: 13px/1 'Inter', system-ui, sans-serif;
-        cursor: pointer; transition: all 0.15s;
-      }
-      #ui button:hover { background: #252525; color: #ccc; border-color: #555; }
-      #ui button.active { background: #252525; color: #fff; border-color: #666; }
-      #perf {
-        position: fixed; top: 12px; right: 16px; z-index: 10;
-        font: 11px/1.4 'SF Mono', 'Menlo', monospace; color: #444;
-      }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #050a08; }
+      canvas { display: block; }
     </style>
   </head>
   <body>
     <canvas id="canvas"></canvas>
-    <div id="ui"></div>
-    <div id="perf"></div>
+    <div id="ui-root"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
