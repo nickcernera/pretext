@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test'
-import { Room, RoomManager } from '../room'
+import { Room, RoomManager, playerTotalMass } from '../room'
 
 describe('Room', () => {
   test('addPlayer and removePlayer', () => {
@@ -18,8 +18,8 @@ describe('Room', () => {
     const room = new Room('lb-room')
     const p1 = room.addPlayer('p1', '@alice', null)
     const p2 = room.addPlayer('p2', '@bob', null)
-    p1.mass = 200
-    p2.mass = 500
+    p1.cells[0].mass = 200
+    p2.cells[0].mass = 500
 
     const lb = room.getLeaderboard()
     expect(lb[0].handle).toBe('@bob')
@@ -29,12 +29,12 @@ describe('Room', () => {
   test('respawnPellets fills deficit', () => {
     const room = new Room('pellet-room')
     const initialCount = room.pellets.length
-    expect(initialCount).toBe(800)
+    expect(initialCount).toBe(150)
 
     // Remove some pellets
-    room.pellets = room.pellets.slice(0, 700)
+    room.pellets = room.pellets.slice(0, 100)
     room.respawnPellets()
-    expect(room.pellets.length).toBe(800)
+    expect(room.pellets.length).toBe(150)
   })
 })
 
