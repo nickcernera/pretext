@@ -1,0 +1,16 @@
+{
+  "buildCommand": "bunx vite build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/r/:code", "destination": "/" },
+    { "source": "/callback", "destination": "/" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    }
+  ]
+}
