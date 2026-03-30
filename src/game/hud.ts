@@ -1,7 +1,8 @@
-import { UI_FONT_FAMILY, RAIN_COLOR } from '@shared/constants'
+import { UI_FONT_FAMILY, BLOB_FONT_FAMILY, RAIN_COLOR } from '@shared/constants'
 import type { LeaderboardEntry } from '@shared/protocol'
 
 type KillEvent = { text: string; time: number }
+type SnapshotToast = { handle: string; roomCode: string; time: number }
 
 export class HUD {
   private leaderboard: LeaderboardEntry[] = []
@@ -9,10 +10,15 @@ export class HUD {
   private mass = 0
   private kills = 0
   private roomCode = ''
+  private snapshotToast: SnapshotToast | null = null
 
   setLeaderboard(entries: LeaderboardEntry[]) { this.leaderboard = entries }
   setPlayerStats(mass: number, kills: number) { this.mass = mass; this.kills = kills }
   setRoomCode(code: string) { this.roomCode = code }
+
+  showSnapshotToast(handle: string, roomCode: string) {
+    this.snapshotToast = { handle, roomCode, time: performance.now() }
+  }
 
   addKillEvent(killer: string, victim: string) {
     this.killEvents.push({ text: `${killer} devoured ${victim}`, time: performance.now() })
@@ -66,6 +72,38 @@ export class HUD {
     ctx.textAlign = 'right'
     ctx.fillText(`mass: ${Math.round(this.mass)}  kills: ${this.kills}`, w - 16, h - 20)
     ctx.textAlign = 'left'
+
+    // Snapshot toast — top center
+    if (this.snapshotToast) {
+      const toastAge = (now - this.snapshotToast.time) / 1000
+      if (toastAge < 8) {
+        const fadeIn = Math.min(1, toastAge * 4)
+        const fadeOut = toastAge > 6 ? Math.max(0, 1 - (toastAge - 6) / 2) : 1
+        ctx.globalAlpha = 0.85 * fadeIn * fadeOut
+        const toastText = '\uD83D\uDC51 You\'re #1! Share your reign?'
+        ctx.font = `14px ${BLOB_FONT_FAMILY}`
+        ctx.textAlign = 'center'
+        const tw = ctx.measureText(toastText).width
+        const tx = w / 2
+        const ty = 50
+
+        // Toast background
+        ctx.fillStyle = '#1a2a1a'
+        ctx.beginPath()
+        ctx.roundRect(tx - tw / 2 - 16, ty - 8, tw + 32, 32, 6)
+        ctx.fill()
+        ctx.strokeStyle = '#3a5a4a'
+        ctx.lineWidth = 1
+        ctx.stroke()
+
+        // Toast text
+        ctx.fillStyle = '#d0ffe0'
+        ctx.fillText(toastText, tx, ty + 12)
+        ctx.textAlign = 'left'
+      } else {
+        this.snapshotToast = null
+      }
+    }
 
     ctx.globalAlpha = 1
   }
