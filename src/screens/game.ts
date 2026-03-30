@@ -1,5 +1,7 @@
 import { Renderer } from '../game/renderer'
 import { Input } from '../game/input'
+import { GameClient } from '../net/client'
+import { StateInterpolator } from '../net/interpolation'
 import {
   WORLD_W, WORLD_H,
   BASE_SPEED, SPEED_EXPONENT,
@@ -9,7 +11,7 @@ import {
 } from '@shared/constants'
 import {
   handleToColor, massToRadius,
-  type PlayerState, type DeathStats, type LeaderboardEntry,
+  type PlayerState, type PelletState, type DeathStats, type LeaderboardEntry,
 } from '@shared/protocol'
 
 const BOT_HANDLES = [
@@ -26,6 +28,13 @@ type Bot = PlayerState & {
 
 type Pellet = { id: number; x: number; y: number }
 
+export type GameOptions = {
+  mode: 'local' | 'online'
+  serverUrl?: string
+  roomCode?: string | null
+  token?: string
+}
+
 export class GameScreen {
   onDeath: ((stats: DeathStats) => void) | null = null
 
@@ -34,57 +43,114 @@ export class GameScreen {
   private renderer = new Renderer()
   private input: Input
   private handle: string
+  private options: GameOptions
 
+  // Shared state
   private playerId = 'local'
-  private player: PlayerState
-  private playerText: string
+  private playerTexts = new Map<string, string>()
+
+  // Local mode state
+  private player!: PlayerState
   private bots: Bot[] = []
   private pellets: Pellet[] = []
   private nextPelletId = 0
-
   private kills = 0
-  private peakMass: number
+  private peakMass: number = MIN_MASS
   private victims: string[] = []
-  private startTime = 0
 
+  // Online mode state
+  private client: GameClient | null = null
+  private interpolator: StateInterpolator | null = null
+  private onlinePlayers: PlayerState[] = []
+  private onlinePellets: PelletState[] = []
+
+  private startTime = 0
   private rafId = 0
   private running = false
   private lastTime = 0
 
-  constructor(canvas: HTMLCanvasElement, handle: string) {
+  constructor(canvas: HTMLCanvasElement, handle: string, options?: GameOptions) {
     this.canvas = canvas
     this.ctx = canvas.getContext('2d')!
     this.input = new Input(canvas)
     this.handle = handle
+    this.options = options || { mode: 'local' }
 
-    // Init player
+    if (this.options.mode === 'local') {
+      this.initLocal()
+    }
+  }
+
+  private initLocal() {
     this.player = {
       id: this.playerId,
-      handle,
+      handle: this.handle,
       x: WORLD_W / 2,
       y: WORLD_H / 2,
       mass: MIN_MASS,
-      color: handleToColor(handle),
+      color: handleToColor(this.handle),
     }
-    this.playerText = handle
+    this.playerTexts.set(this.playerId, this.handle)
     this.peakMass = MIN_MASS
 
-    // Init bots
     for (const bh of BOT_HANDLES) {
       this.bots.push(this.createBot(bh))
     }
 
-    // Init pellets
     for (let i = 0; i < PELLET_COUNT; i++) {
       this.pellets.push(this.spawnPellet())
     }
+  }
+
+  private initOnline() {
+    this.interpolator = new StateInterpolator()
+    this.client = new GameClient({
+      onJoined: (room, playerId, _world) => {
+        this.playerId = playerId
+        this.renderer.hud.setRoomCode(room)
+      },
+      onState: (players, pellets) => {
+        this.onlinePlayers = players
+        this.onlinePellets = pellets
+        this.interpolator!.update(players)
+        this.renderer.pellets.setPellets(pellets)
+
+        // Update rain with all current handles
+        const handles = players.map(p => p.handle)
+        this.renderer.rain.setHandles(handles)
+      },
+      onKill: (killerId, _victimId, killerHandle, victimHandle) => {
+        // Update playerTexts: append victim handle to killer's text
+        const existing = this.playerTexts.get(killerId) || killerHandle
+        this.playerTexts.set(killerId, existing + ' ' + victimHandle)
+
+        this.renderer.hud.addKillEvent(killerHandle, victimHandle)
+        this.renderer.rain.addKill(killerHandle, victimHandle, window.innerWidth, window.innerHeight)
+      },
+      onDied: (stats) => {
+        this.stop()
+        if (this.onDeath) {
+          this.onDeath(stats)
+        }
+      },
+      onLeaderboard: (entries, _isSnapshot) => {
+        this.renderer.hud.setLeaderboard(entries)
+      },
+      onError: (msg) => {
+        console.error('[GameClient] error:', msg)
+      },
+      onDisconnect: () => {
+        console.warn('[GameClient] disconnected')
+        this.stop()
+      },
+    })
   }
 
   setOnDeath(cb: (stats: DeathStats) => void) {
     this.onDeath = cb
   }
 
-  start() {
+  async start() {
     this.running = true
     this.startTime = performance.now()
     this.lastTime = performance.now()
@@ -92,9 +158,20 @@ export class GameScreen {
     const sw = window.innerWidth
     const sh = window.innerHeight
     this.renderer.init(sw, sh)
-    this.renderer.rain.setHandles([this.handle, ...BOT_HANDLES])
 
-    this.renderer.pellets.setPellets(this.pellets)
+    if (this.options.mode === 'online') {
+      this.initOnline()
+      try {
+        await this.client!.connect(this.options.serverUrl!)
+        this.client!.join(this.options.roomCode || null, this.options.token, this.handle)
+      } catch (e) {
+        console.error('[GameClient] failed to connect:', e)
+        return
+      }
+    } else {
+      this.renderer.rain.setHandles([this.handle, ...BOT_HANDLES])
+      this.renderer.pellets.setPellets(this.pellets)
+    }
 
     this.loop()
   }
@@ -104,6 +181,10 @@ export class GameScreen {
     if (this.rafId) {
       cancelAnimationFrame(this.rafId)
       this.rafId = 0
+    }
+    if (this.client) {
+      this.client.disconnect()
+      this.client = null
     }
   }
 
@@ -116,70 +197,114 @@ export class GameScreen {
     const dt = Math.min((now - this.lastTime) / 1000, 0.1)
     this.lastTime = now
 
-    this.simulate(dt)
-    this.render(now)
+    if (this.options.mode === 'local') {
+      this.simulateLocal(dt)
+      this.renderLocal(now)
+    } else {
+      this.simulateOnline(dt)
+      this.renderOnline(now, dt)
+    }
 
     this.rafId = requestAnimationFrame(this.loop)
   }
 
-  private simulate(dt: number) {
+  // === LOCAL MODE ===
+
+  private simulateLocal(dt: number) {
     const sw = window.innerWidth
     const sh = window.innerHeight
 
-    // Update cursor in world coords
     const worldCursor = this.renderer.camera.screenToWorld(
       this.input.screenX, this.input.screenY, sw, sh,
     )
     this.input.worldX = worldCursor.x
     this.input.worldY = worldCursor.y
 
-    // Move player toward cursor
     this.moveToward(this.player, this.input.worldX, this.input.worldY, dt)
-
-    // Mass decay
     this.player.mass = Math.max(MIN_MASS, this.player.mass * (1 - MASS_DECAY_RATE * dt))
     if (this.player.mass > this.peakMass) this.peakMass = this.player.mass
 
-    // Bot AI + movement
     this.updateBots(dt)
-
-    // Player eats pellets
     this.eatPellets(this.player)
-
-    // Bot eats pellets
     for (const bot of this.bots) {
       this.eatPellets(bot)
     }
-
-    // Player eats bots / bots eat player
     this.checkPlayerBotCollisions()
-
-    // Bot-on-bot eating
     this.checkBotBotCollisions()
 
-    // Respawn pellets to maintain count
     while (this.pellets.length < PELLET_COUNT) {
       this.pellets.push(this.spawnPellet())
     }
     this.renderer.pellets.setPellets(this.pellets)
-
-    // Update HUD
-    this.updateHUD()
+    this.updateHUDLocal()
   }
 
-  private render(now: number) {
+  private renderLocal(now: number) {
     const sw = window.innerWidth
     const sh = window.innerHeight
 
     const allPlayers: PlayerState[] = [this.player, ...this.bots]
-    const playerTexts = new Map<string, string>()
-    playerTexts.set(this.playerId, this.playerText)
+    this.playerTexts.set(this.playerId, this.playerTexts.get(this.playerId) || this.handle)
     for (const bot of this.bots) {
-      playerTexts.set(bot.id, bot.handle)
+      if (!this.playerTexts.has(bot.id)) {
+        this.playerTexts.set(bot.id, bot.handle)
+      }
     }
 
-    this.renderer.draw(this.ctx, sw, sh, allPlayers, this.playerId, playerTexts, now)
+    this.renderer.draw(this.ctx, sw, sh, allPlayers, this.playerId, this.playerTexts, now)
   }
+
+  // === ONLINE MODE ===
+
+  private simulateOnline(_dt: number) {
+    const sw = window.innerWidth
+    const sh = window.innerHeight
+
+    const worldCursor = this.renderer.camera.screenToWorld(
+      this.input.screenX, this.input.screenY, sw, sh,
+    )
+    this.input.worldX = worldCursor.x
+    this.input.worldY = worldCursor.y
+
+    // Send input to server each frame
+    this.client?.sendInput(this.input.worldX, this.input.worldY)
+
+    // Handle split/eject inputs
+    if (this.input.consumeSplit()) {
+      this.client?.sendSplit()
+    }
+    if (this.input.consumeEject()) {
+      this.client?.sendEject()
+    }
+
+    // Update HUD player stats from server state
+    const localPlayer = this.onlinePlayers.find(p => p.id === this.playerId)
+    if (localPlayer) {
+      // Count kills from playerTexts (words beyond handle)
+      const text = this.playerTexts.get(this.playerId) || ''
+      const words = text.trim().split(/\s+/)
+      const killCount = Math.max(0, words.length - 1)
+      this.renderer.hud.setPlayerStats(localPlayer.mass, killCount)
+    }
+  }
+
+  private renderOnline(now: number, dt: number) {
+    const sw = window.innerWidth
+    const sh = window.innerHeight
+
+    const interpolated = this.interpolator!.getInterpolated(dt)
+
+    // Build playerTexts for any new players we haven't seen
+    for (const p of interpolated) {
+      if (!this.playerTexts.has(p.id)) {
+        this.playerTexts.set(p.id, p.handle)
+      }
+    }
+
+    this.renderer.draw(this.ctx, sw, sh, interpolated, this.playerId, this.playerTexts, now)
+  }
+
+  // === LOCAL-ONLY HELPERS ===
 
   private moveToward(entity: PlayerState, tx: number, ty: number, dt: number) {
     const dx = tx - entity.x
@@ -223,18 +348,16 @@ export class GameScreen {
       if (overlap < EAT_OVERLAP) continue
 
       if (this.player.mass > bot.mass * EAT_RATIO) {
-        // Player eats bot
         this.player.mass += bot.mass * 0.8
         this.kills++
         this.victims.push(bot.handle)
-        this.playerText += ' ' + bot.handle
+        const existing = this.playerTexts.get(this.playerId) || this.handle
+        this.playerTexts.set(this.playerId, existing + ' ' + bot.handle)
         this.renderer.hud.addKillEvent(this.handle, bot.handle)
         this.renderer.rain.addKill(this.handle, bot.handle, window.innerWidth, window.innerHeight)
 
-        // Respawn bot
         this.bots[i] = this.createBot(bot.handle)
       } else if (bot.mass > this.player.mass * EAT_RATIO) {
-        // Bot eats player
         bot.mass += this.player.mass * 0.8
         this.die(bot.handle)
         return
@@ -273,10 +396,8 @@ export class GameScreen {
 
   private updateBots(dt: number) {
     for (const bot of this.bots) {
-      // Mass decay
       bot.mass = Math.max(MIN_MASS, bot.mass * (1 - MASS_DECAY_RATE * dt))
 
-      // Wander timer
       bot.wanderTimer -= dt
       if (bot.wanderTimer <= 0) {
         bot.targetX = Math.random() * WORLD_W
@@ -284,13 +405,11 @@ export class GameScreen {
         bot.wanderTimer = 3 + Math.random() * 5
       }
 
-      // Threat detection: flee from bigger entities within vision range
       const visionRange = 400
       let fleeX = 0
       let fleeY = 0
       let fleeing = false
 
-      // Check player as threat
       const dpx = this.player.x - bot.x
       const dpy = this.player.y - bot.y
       const distP = Math.sqrt(dpx * dpx + dpy * dpy)
@@ -300,7 +419,6 @@ export class GameScreen {
         fleeing = true
       }
 
-      // Check other bots as threats
       for (const other of this.bots) {
         if (other === bot) continue
         const dx = other.x - bot.x
@@ -313,14 +431,12 @@ export class GameScreen {
         }
       }
 
-      // Chase detection: pursue smaller entities within vision range
       let chaseX = 0
       let chaseY = 0
       let chasing = false
       let closestPreyDist = Infinity
 
       if (!fleeing) {
-        // Check player as prey
         if (distP < visionRange && bot.mass > this.player.mass * EAT_RATIO && distP < closestPreyDist) {
           chaseX = dpx / distP
           chaseY = dpy / distP
@@ -328,7 +444,6 @@ export class GameScreen {
           closestPreyDist = distP
         }
 
-        // Check other bots as prey
         for (const other of this.bots) {
           if (other === bot) continue
           const dx = other.x - bot.x
@@ -377,8 +492,7 @@ export class GameScreen {
     }
   }
 
-  private updateHUD() {
-    // Build leaderboard from all entities
+  private updateHUDLocal() {
     const all: LeaderboardEntry[] = [
       { handle: this.handle, mass: this.player.mass, kills: this.kills },
       ...this.bots.map(b => ({ handle: b.handle, mass: b.mass, kills: 0 })),

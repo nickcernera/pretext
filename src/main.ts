@@ -2,6 +2,7 @@ import { GameScreen } from './screens/game'
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'ws://localhost:3001'
 
 function resize() {
   const dpr = window.devicePixelRatio || 1
@@ -15,13 +16,16 @@ function resize() {
 resize()
 window.addEventListener('resize', resize)
 
-const game = new GameScreen(canvas, '@nickcernera')
-game.setOnDeath((stats) => {
-  console.log('DIED', stats)
-  setTimeout(() => {
-    const g2 = new GameScreen(canvas, '@nickcernera')
-    g2.setOnDeath(game.onDeath)
-    g2.start()
-  }, 2000)
-})
-game.start()
+startGame('@nickcernera')
+
+function startGame(handle: string) {
+  const game = new GameScreen(canvas, handle, {
+    mode: 'online',
+    serverUrl: `${SERVER_URL}/ws`,
+  })
+  game.setOnDeath((stats) => {
+    console.log('DIED', stats)
+    setTimeout(() => startGame(handle), 2000)
+  })
+  game.start()
+}
