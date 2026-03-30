@@ -41,7 +41,7 @@ export function fillBots(room: Room) {
     const id = `bot_${botIdCounter++}`
     const player = room.addPlayer(id, handle, null)
     // Give bots varied starting mass
-    player.mass = MIN_MASS + Math.random() * 100
+    player.mass = 100 + Math.random() * 300
     player.peakMass = player.mass
     const t = randomTarget()
     player.targetX = t.x

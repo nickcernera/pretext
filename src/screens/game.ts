@@ -88,11 +88,11 @@ export class GameScreen {
       handle: this.handle,
       x: WORLD_W / 2,
       y: WORLD_H / 2,
-      mass: MIN_MASS,
+      mass: 200,
       color: handleToColor(this.handle),
     }
     this.playerTexts.set(this.playerId, this.handle)
-    this.peakMass = MIN_MASS
+    this.peakMass = 200
 
     for (const bh of BOT_HANDLES) {
       this.bots.push(this.createBot(bh))
@@ -515,7 +515,7 @@ export class GameScreen {
       handle,
       x: Math.random() * WORLD_W,
       y: Math.random() * WORLD_H,
-      mass: MIN_MASS + Math.random() * 80,
+      mass: 100 + Math.random() * 300,
       color: handleToColor(handle),
       targetX: Math.random() * WORLD_W,
       targetY: Math.random() * WORLD_H,

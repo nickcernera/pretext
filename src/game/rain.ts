@@ -1,5 +1,7 @@
+import { prepareWithSegments, layoutNextLine, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
 import { UI_FONT_FAMILY, RAIN_COLOR } from '@shared/constants'
 
+// --- Seed corpus ---
 const SEED_WORDS = [
   'transformer', 'attention', 'gradient∇', 'softmax', 'backprop',
   'embeddings', 'CUDA', 'inference', 'tokenizer', 'hallucinate',
@@ -8,17 +10,19 @@ const SEED_WORDS = [
   'learning_rate', 'conv2d', 'relu', 'sigmoid', 'entropy',
   'optimizer', 'scheduler', 'normalize', 'pooling', 'residual',
   'conn.established', 'ACK', 'SYN', 'RST', 'TTL=64',
+  'malloc', 'fork()', 'pipe', 'mutex', 'semaphore',
+  'heap', 'stack', 'queue', 'btree', 'hashmap',
+  'tcp.syn', 'udp', 'http/2', 'tls1.3', 'dns',
+  '∂f/∂x', '∫dx', 'Σ', 'λ', '∞',
 ]
 
-type RainColumn = {
-  x: number
-  y: number
-  speed: number
-  chars: string[]
-  charIndex: number
-  opacity: number
-  fontSize: number
-}
+const FONT = `12px ${UI_FONT_FAMILY}`
+const LINE_HEIGHT = 18
+const SCROLL_SPEED = 0 // static — blobs carve through the text
+const MARGIN = 8
+const BLOB_PADDING = 18 // extra space around blobs
+
+type BlobHole = { x: number; y: number; radius: number }
 
 type KillFlash = {
   text: string
@@ -29,100 +33,189 @@ type KillFlash = {
 }
 
 export class MatrixRain {
-  private columns: RainColumn[] = []
+  private corpus = ''
+  private prepared: PreparedTextWithSegments | null = null
+  private scrollOffset = 0
+  private blobHoles: BlobHole[] = []
   private handles: string[] = []
   private bios: string[] = []
   private killFlashes: KillFlash[] = []
-  private lastTime = 0
+  private corpusDirty = true
 
-  init(screenW: number, screenH: number) {
-    this.columns = []
-    const colSpacing = 80
-    const numCols = Math.ceil(screenW / colSpacing) + 2
-
-    for (let i = 0; i < numCols; i++) {
-      this.columns.push({
-        x: i * colSpacing + (Math.random() - 0.5) * 30,
-        y: Math.random() * -screenH,
-        speed: 20 + Math.random() * 40,
-        chars: this.pickChars(),
-        charIndex: 0,
-        opacity: 0.06 + Math.random() * 0.12,
-        fontSize: 10 + Math.random() * 3,
-      })
-    }
+  init(_screenW: number, _screenH: number) {
+    this.rebuildCorpus()
   }
 
-  private pickChars(): string[] {
-    const pool: string[] = [...SEED_WORDS]
-    for (const h of this.handles) {
-      pool.push(h, h)
+  private rebuildCorpus() {
+    // Build a long repeating corpus from seed + player data
+    const pool = [...SEED_WORDS]
+    for (const h of this.handles) pool.push(h, h, h)
+    for (const b of this.bios) pool.push(...b.split(/\s+/).slice(0, 6))
+
+    // Shuffle and repeat to fill ~3000 words
+    const words: string[] = []
+    for (let i = 0; i < 3000; i++) {
+      words.push(pool[Math.floor(Math.random() * pool.length)])
     }
-    for (const b of this.bios) {
-      pool.push(...b.split(/\s+/).slice(0, 5))
-    }
-    const shuffled = pool.sort(() => Math.random() - 0.5)
-    return shuffled.slice(0, 20 + Math.floor(Math.random() * 20))
+    this.corpus = words.join('  ')
+    this.prepared = prepareWithSegments(this.corpus, FONT)
+    this.corpusDirty = false
   }
 
   setHandles(handles: string[]) {
-    this.handles = handles
+    if (handles.join() !== this.handles.join()) {
+      this.handles = handles
+      this.corpusDirty = true
+    }
   }
 
   setBios(bios: string[]) {
     this.bios = bios
+    this.corpusDirty = true
+  }
+
+  setBlobHoles(holes: BlobHole[]) {
+    this.blobHoles = holes
   }
 
   addKill(killerHandle: string, victimHandle: string, screenW: number, screenH: number) {
     this.killFlashes.push({
       text: `${killerHandle} devoured ${victimHandle}`,
-      x: Math.random() * screenW * 0.6 + screenW * 0.05,
-      y: Math.random() * screenH * 0.6 + screenH * 0.1,
-      opacity: 0.7,
+      x: Math.random() * screenW * 0.5 + screenW * 0.15,
+      y: Math.random() * screenH * 0.4 + screenH * 0.2,
+      opacity: 0.9,
       createdAt: performance.now(),
     })
   }
 
-  update(dt: number) {
-    for (const col of this.columns) {
-      col.y += col.speed * dt
-      if (col.y > 2000) {
-        col.y = Math.random() * -200
-        col.chars = this.pickChars()
-        col.charIndex = 0
-      }
+  update(dt: number, screenH: number) {
+    this.scrollOffset += SCROLL_SPEED * dt
+
+    // Wrap scroll offset to prevent infinity
+    // We use a large buffer so text repeats seamlessly
+    const wrapHeight = screenH * 3
+    if (this.scrollOffset > wrapHeight) {
+      this.scrollOffset -= wrapHeight
     }
+
+    // Rebuild corpus if player data changed (throttled)
+    if (this.corpusDirty) {
+      this.rebuildCorpus()
+    }
+
+    // Fade kill flashes
     const now = performance.now()
     this.killFlashes = this.killFlashes.filter(k => {
-      k.opacity = Math.max(0, 0.7 - (now - k.createdAt) / 3000)
+      k.opacity = Math.max(0, 0.9 - (now - k.createdAt) / 2500)
       return k.opacity > 0
     })
   }
 
   draw(ctx: CanvasRenderingContext2D, screenW: number, screenH: number) {
+    if (!this.prepared) return
+
+    ctx.font = FONT
     ctx.textBaseline = 'top'
 
-    for (const col of this.columns) {
-      ctx.font = `${col.fontSize}px ${UI_FONT_FAMILY}`
-      ctx.globalAlpha = col.opacity
-      ctx.fillStyle = RAIN_COLOR
+    // Lay out text flowing around blobs, starting from scroll offset
+    const startY = -(this.scrollOffset % LINE_HEIGHT) - LINE_HEIGHT
+    // Start reading from beginning of corpus each frame. Since the corpus is
+    // long (~3000 words) and we only render ~40 lines, we won't exhaust it.
+    // The scroll offset controls Y position, not text position — this means
+    // the text content stays stable while the "window" scrolls over it.
+    let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
 
-      let y = col.y
-      for (let i = 0; i < col.chars.length && y < screenH + 20; i++) {
-        if (y > -20) {
-          ctx.fillText(col.chars[i], col.x, y)
+    let y = startY
+    let lineIndex = 0
+
+    while (y < screenH + LINE_HEIGHT) {
+      const lineTop = y
+      const lineBottom = y + LINE_HEIGHT
+
+      // Compute available horizontal spans by subtracting blob exclusions
+      let spans = [{ left: MARGIN, right: screenW - MARGIN }]
+
+      for (const blob of this.blobHoles) {
+        const exc = getCircleExclusion(blob, lineTop, lineBottom)
+        if (!exc) continue
+        const [exLeft, exRight] = exc
+
+        const next: typeof spans = []
+        for (const span of spans) {
+          if (exRight <= span.left || exLeft >= span.right) {
+            next.push(span)
+          } else {
+            if (exLeft > span.left + 20) next.push({ left: span.left, right: exLeft })
+            if (exRight < span.right - 20) next.push({ left: exRight, right: span.right })
+          }
         }
-        y += col.fontSize * 2
+        spans = next
       }
+
+      // Lay out text in each available span
+      for (const span of spans) {
+        const maxWidth = span.right - span.left
+        if (maxWidth < 30) continue
+
+        const line = layoutNextLine(this.prepared, cursor, maxWidth)
+        if (!line) {
+          // Wrap back to start of corpus
+          cursor = { segmentIndex: 0, graphemeIndex: 0 }
+          break
+        }
+
+        // Base opacity — clearly visible
+        let alpha = 0.25
+        // Brighter near blobs (halo effect — text glows as it bends around)
+        for (const blob of this.blobHoles) {
+          const dx = (span.left + span.right) / 2 - blob.x
+          const dy = (lineTop + lineBottom) / 2 - blob.y
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          const haloZone = blob.radius + 100
+          if (dist < haloZone) {
+            const proximity = 1 - dist / haloZone
+            alpha = Math.max(alpha, 0.25 + proximity * 0.35)
+          }
+        }
+
+        ctx.globalAlpha = alpha
+        ctx.fillStyle = RAIN_COLOR
+        ctx.fillText(line.text, span.left, y)
+
+        cursor = line.end
+      }
+
+      y += LINE_HEIGHT
+      lineIndex++
     }
 
+    // Kill flashes — brighter, on top
     for (const flash of this.killFlashes) {
-      ctx.font = `13px ${UI_FONT_FAMILY}`
+      ctx.font = `bold 14px ${UI_FONT_FAMILY}`
       ctx.globalAlpha = flash.opacity
-      ctx.fillStyle = RAIN_COLOR
+      ctx.fillStyle = '#80ffa0'
       ctx.fillText(flash.text, flash.x, flash.y)
     }
 
     ctx.globalAlpha = 1
   }
+}
+
+/** For a circle at (cx, cy) with radius r, return horizontal exclusion [left, right]
+ *  for a line band [lineTop, lineBottom], or null if no overlap. */
+function getCircleExclusion(
+  blob: BlobHole,
+  lineTop: number,
+  lineBottom: number,
+): [number, number] | null {
+  const r = blob.radius + BLOB_PADDING
+
+  if (lineBottom < blob.y - r || lineTop > blob.y + r) return null
+
+  // Find the closest y in the line band to the circle center
+  const closestY = Math.max(lineTop, Math.min(lineBottom, blob.y))
+  const dy = closestY - blob.y
+  const halfWidth = Math.sqrt(Math.max(0, r * r - dy * dy))
+
+  return [blob.x - halfWidth, blob.x + halfWidth]
 }

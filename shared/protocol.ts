@@ -54,5 +54,5 @@ export function handleToColor(handle: string): string {
 }
 
 export function massToRadius(mass: number): number {
-  return Math.sqrt(mass / Math.PI) * 1.5
+  return Math.sqrt(mass / Math.PI) * 4
 }

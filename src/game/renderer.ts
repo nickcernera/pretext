@@ -4,7 +4,7 @@ import { drawBlob } from './blob'
 import { PelletRenderer } from './pellets'
 import { Camera } from './camera'
 import { HUD } from './hud'
-import type { PlayerState } from '@shared/protocol'
+import { massToRadius, type PlayerState } from '@shared/protocol'
 
 export class Renderer {
   readonly rain = new MatrixRain()
@@ -15,6 +15,14 @@ export class Renderer {
 
   init(screenW: number, screenH: number) {
     this.rain.init(screenW, screenH)
+  }
+
+  /** Convert world position to screen position using current camera state */
+  worldToScreen(wx: number, wy: number, screenW: number, screenH: number): { x: number; y: number } {
+    return {
+      x: (wx - this.camera.x - screenW / 2) * this.camera.scale + screenW / 2,
+      y: (wy - this.camera.y - screenH / 2) * this.camera.scale + screenH / 2,
+    }
   }
 
   draw(
@@ -29,35 +37,45 @@ export class Renderer {
     const dt = this.lastTime ? (now - this.lastTime) / 1000 : 0.016
     this.lastTime = now
 
-    // 1. Background (screen space)
-    drawBackground(ctx, screenW, screenH)
-
-    // 2. Matrix rain (screen space)
-    this.rain.update(dt)
-    this.rain.draw(ctx, screenW, screenH)
-
-    // 3. World-space elements
+    // 1. Update camera FIRST (before any drawing)
     const local = players.find(p => p.id === localPlayerId)
     if (local) {
       this.camera.follow(local.x, local.y, local.mass, screenW, screenH)
     }
     this.camera.update(dt)
+
+    // 2. Background (screen space)
+    drawBackground(ctx, screenW, screenH)
+
+    // 3. Compute screen-space blob holes for rain exclusion
+    const blobHoles = players.map(p => {
+      const r = massToRadius(p.mass)
+      const screen = this.worldToScreen(p.x, p.y, screenW, screenH)
+      return { x: screen.x, y: screen.y, radius: r * this.camera.scale }
+    })
+
+    // 4. Matrix rain — text flows around blob holes
+    this.rain.setBlobHoles(blobHoles)
+    this.rain.update(dt, screenH)
+    this.rain.draw(ctx, screenW, screenH)
+
+    // 5. World-space elements
     this.camera.applyTransform(ctx, screenW, screenH)
 
-    // 4. Pellets
+    // 6. Pellets
     this.pellets.draw(ctx)
 
-    // 5. Player blobs (sorted: biggest first so smallest render on top)
+    // 7. Player blobs (sorted: biggest first so smallest render on top)
     const sorted = [...players].sort((a, b) => b.mass - a.mass)
     for (const p of sorted) {
       const text = playerTexts.get(p.id) || p.handle
       drawBlob(ctx, p.x, p.y, p.mass, text, p.color, p.id === localPlayerId)
     }
 
-    // 6. Restore to screen space
+    // 8. Restore to screen space
     this.camera.restore(ctx)
 
-    // 7. HUD
+    // 9. HUD
     this.hud.draw(ctx, screenW, screenH)
   }
 }
