@@ -1,6 +1,6 @@
-import { WORLD_W, WORLD_H, BOT_FILL_THRESHOLD, MIN_MASS } from '../shared/constants'
-import { massToRadius } from '../shared/protocol'
+import { WORLD_W, WORLD_H, BOT_FILL_THRESHOLD, EAT_RATIO } from '../shared/constants'
 import type { Room, ServerPlayer } from './room'
+import { playerTotalMass } from './room'
 
 const BOT_HANDLES = [
   '@synthwave',
@@ -41,8 +41,9 @@ export function fillBots(room: Room) {
     const id = `bot_${botIdCounter++}`
     const player = room.addPlayer(id, handle, null)
     // Give bots varied starting mass
-    player.mass = 100 + Math.random() * 300
-    player.peakMass = player.mass
+    const mass = 100 + Math.random() * 300
+    player.cells[0].mass = mass
+    player.peakMass = mass
     const t = randomTarget()
     player.targetX = t.x
     player.targetY = t.y
@@ -63,48 +64,62 @@ export function tickBots(room: Room, dt: number) {
   for (const bot of players) {
     if (bot.ws !== null) continue // skip real players
 
-    // Find nearby players
-    let closestBigger: ServerPlayer | null = null
+    // Bot is always single-cell, use its cell's mass for decisions
+    const botMass = bot.cells[0]?.mass ?? 0
+    const botX = bot.cells[0]?.x ?? 0
+    const botY = bot.cells[0]?.y ?? 0
+
+    // Find nearby threats and prey by checking individual cells of other players
+    let closestBiggerX = 0, closestBiggerY = 0
     let closestBiggerDist = Infinity
-    let closestSmaller: ServerPlayer | null = null
+    let fleeing = false
+
+    let closestSmallerX = 0, closestSmallerY = 0
     let closestSmallerDist = Infinity
+    let chasing = false
 
     for (const other of players) {
       if (other.id === bot.id) continue
-      const dx = other.x - bot.x
-      const dy = other.y - bot.y
-      const dist = Math.sqrt(dx * dx + dy * dy)
 
-      if (other.mass > bot.mass * 1.15 && dist < FLEE_RANGE) {
-        if (dist < closestBiggerDist) {
-          closestBigger = other
-          closestBiggerDist = dist
+      // Check each cell of the other player
+      for (const cell of other.cells) {
+        const dx = cell.x - botX
+        const dy = cell.y - botY
+        const dist = Math.sqrt(dx * dx + dy * dy)
+
+        // Flee from any cell that can eat us
+        if (cell.mass > botMass * EAT_RATIO && dist < FLEE_RANGE) {
+          if (dist < closestBiggerDist) {
+            closestBiggerX = cell.x
+            closestBiggerY = cell.y
+            closestBiggerDist = dist
+            fleeing = true
+          }
         }
-      } else if (bot.mass > other.mass * 1.15 && dist < CHASE_RANGE) {
-        if (dist < closestSmallerDist) {
-          closestSmaller = other
-          closestSmallerDist = dist
+        // Chase any cell we can eat
+        else if (botMass > cell.mass * EAT_RATIO && dist < CHASE_RANGE) {
+          if (dist < closestSmallerDist) {
+            closestSmallerX = cell.x
+            closestSmallerY = cell.y
+            closestSmallerDist = dist
+            chasing = true
+          }
         }
       }
     }
 
-    // Priority: flee > chase > wander
-    if (closestBigger) {
-      // Flee: move away from bigger player
-      const dx = bot.x - closestBigger.x
-      const dy = bot.y - closestBigger.y
+    if (fleeing) {
+      // Flee away from biggest threat
+      const dx = botX - closestBiggerX
+      const dy = botY - closestBiggerY
       const dist = Math.sqrt(dx * dx + dy * dy) || 1
-      bot.targetX = bot.x + (dx / dist) * 500
-      bot.targetY = bot.y + (dy / dist) * 500
-      // Clamp targets to world bounds
-      bot.targetX = Math.max(0, Math.min(WORLD_W, bot.targetX))
-      bot.targetY = Math.max(0, Math.min(WORLD_H, bot.targetY))
-    } else if (closestSmaller) {
-      // Chase: move toward smaller player
-      bot.targetX = closestSmaller.x
-      bot.targetY = closestSmaller.y
+      bot.targetX = Math.max(0, Math.min(WORLD_W, botX + (dx / dist) * 500))
+      bot.targetY = Math.max(0, Math.min(WORLD_H, botY + (dy / dist) * 500))
+    } else if (chasing) {
+      bot.targetX = closestSmallerX
+      bot.targetY = closestSmallerY
     } else {
-      // Wander: occasionally pick a new random target
+      // Wander
       const lastChange = lastWanderChange.get(bot.id) ?? 0
       if (now - lastChange > WANDER_INTERVAL + Math.random() * 2000) {
         const t = randomTarget()

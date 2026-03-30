@@ -9,25 +9,24 @@ import {
   MIN_MASS,
 } from '../shared/constants'
 import { handleToColor } from '../shared/protocol'
-
-const PELLET_WORDS = [
-  'transformer', 'attention', 'gradient', 'softmax', 'backprop',
-  'embeddings', 'CUDA', 'inference', 'tokenizer', 'dropout',
-  'entropy', 'optimizer', 'tensor', 'sigmoid', 'relu',
-  'pipeline', 'latency', 'throughput', 'shard', 'replica',
-  'vector', 'matrix', 'epoch', 'batch', 'kernel',
-  'lambda', 'mutex', 'malloc', 'stack', 'heap',
-  'queue', 'hashmap', 'btree', 'socket', 'daemon',
-]
+import { PELLET_WORDS } from '../shared/words'
 import type { PelletState, LeaderboardEntry } from '../shared/protocol'
+
+export type ServerCell = {
+  cellId: number
+  x: number
+  y: number
+  mass: number
+  vx: number
+  vy: number
+  splitTime: number  // timestamp when created by split (0 = original)
+}
 
 export type ServerPlayer = {
   id: string
   handle: string
   bio: string
-  x: number
-  y: number
-  mass: number
+  cells: ServerCell[]
   color: string
   targetX: number
   targetY: number
@@ -37,6 +36,24 @@ export type ServerPlayer = {
   peakMass: number
   joinedAt: number
   ws: ServerWebSocket<WsData> | null // null for bots
+  nextCellId: number
+}
+
+export function playerTotalMass(p: ServerPlayer): number {
+  let total = 0
+  for (const c of p.cells) total += c.mass
+  return total
+}
+
+export function playerCenterOfMass(p: ServerPlayer): { x: number; y: number } {
+  let totalMass = 0, wx = 0, wy = 0
+  for (const c of p.cells) {
+    wx += c.x * c.mass
+    wy += c.y * c.mass
+    totalMass += c.mass
+  }
+  if (totalMass === 0) return { x: 0, y: 0 }
+  return { x: wx / totalMass, y: wy / totalMass }
 }
 
 export type WsData = {
@@ -47,6 +64,7 @@ export type WsData = {
 export class Room {
   code: string
   players: Map<string, ServerPlayer> = new Map()
+  spectators: Set<ServerWebSocket<WsData>> = new Set()
   pellets: PelletState[] = []
   private nextPelletId = 0
   private lastSnapshotAt = 0
@@ -80,31 +98,38 @@ export class Room {
   }
 
   addPlayer(id: string, handle: string, ws: ServerWebSocket<WsData> | null): ServerPlayer {
+    const x = Math.random() * WORLD_W
+    const y = Math.random() * WORLD_H
     const player: ServerPlayer = {
       id,
       handle,
       bio: '',
-      x: Math.random() * WORLD_W,
-      y: Math.random() * WORLD_H,
-      mass: 200,
+      cells: [{ cellId: 0, x, y, mass: 200, vx: 0, vy: 0, splitTime: 0 }],
       color: handleToColor(handle),
-      targetX: 0,
-      targetY: 0,
+      targetX: x,
+      targetY: y,
       kills: 0,
       victims: [],
       text: handle,
       peakMass: 200,
       joinedAt: Date.now(),
       ws,
+      nextCellId: 1,
     }
-    player.targetX = player.x
-    player.targetY = player.y
     this.players.set(id, player)
     return player
   }
 
   removePlayer(id: string) {
     this.players.delete(id)
+  }
+
+  addSpectator(ws: ServerWebSocket<WsData>) {
+    this.spectators.add(ws)
+  }
+
+  removeSpectator(ws: ServerWebSocket<WsData>) {
+    this.spectators.delete(ws)
   }
 
   playerCount(): number {
@@ -121,9 +146,9 @@ export class Room {
 
   getLeaderboard(): LeaderboardEntry[] {
     return Array.from(this.players.values())
-      .sort((a, b) => b.mass - a.mass)
+      .sort((a, b) => playerTotalMass(b) - playerTotalMass(a))
       .slice(0, 10)
-      .map((p) => ({ handle: p.handle, mass: Math.round(p.mass), kills: p.kills }))
+      .map((p) => ({ handle: p.handle, mass: Math.round(playerTotalMass(p)), kills: p.kills }))
   }
 
   shouldSnapshot(): boolean {

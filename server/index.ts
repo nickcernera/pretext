@@ -2,7 +2,7 @@ import { WORLD_W, WORLD_H } from '../shared/constants'
 import type { ClientMessage, ServerMessage } from '../shared/protocol'
 import { RoomManager } from './room'
 import type { WsData } from './room'
-import { Simulation } from './simulation'
+import { Simulation, splitPlayer } from './simulation'
 import {
   exchangeCodeForToken, fetchUserInfo, createJWT,
   getTwitterAuthUrl,
@@ -185,7 +185,11 @@ const server = Bun.serve<WsData>({
         }
 
         case 'split': {
-          // Stub for now
+          const room = roomManager.getRoom(ws.data.roomCode)
+          if (!room) return
+          const player = room.players.get(ws.data.playerId)
+          if (!player) return
+          splitPlayer(player, Date.now())
           break
         }
 
@@ -200,6 +204,7 @@ const server = Bun.serve<WsData>({
       const room = roomManager.getRoom(ws.data.roomCode)
       if (room) {
         room.removePlayer(ws.data.playerId)
+        room.removeSpectator(ws)
       }
     },
   },
