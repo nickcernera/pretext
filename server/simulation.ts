@@ -23,6 +23,7 @@ import { playerTotalMass, playerCenterOfMass } from './room'
 import type { RoomManager } from './room'
 import { SpatialGrid } from './spatial'
 import { tickBots, fillBots, cleanupBotState } from './bot'
+import type { StatsTracker } from './stats'
 
 type CellEntry = {
   playerId: string
@@ -65,9 +66,11 @@ export function splitPlayer(player: ServerPlayer, now: number) {
 export class Simulation {
   private interval: ReturnType<typeof setInterval> | null = null
   private roomManager: RoomManager
+  private stats: StatsTracker
 
-  constructor(roomManager: RoomManager) {
+  constructor(roomManager: RoomManager, stats: StatsTracker) {
     this.roomManager = roomManager
+    this.stats = stats
   }
 
   start() {
@@ -247,6 +250,8 @@ export class Simulation {
             killerPlayer.kills++
             killerPlayer.victims.push(victimPlayer.handle)
             killerPlayer.text = `ate ${victimPlayer.handle}`
+            this.stats.onKill()
+            this.stats.onPlayerDeath(now - victimPlayer.joinedAt, victimPlayer.handle)
 
             // Kill message
             const killMsg: ServerMessage = {

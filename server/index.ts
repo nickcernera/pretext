@@ -8,11 +8,13 @@ import {
   getTwitterAuthUrl,
 } from './auth'
 import { generateShareCard, storeCard, getCard } from './cards'
+import { StatsTracker } from './stats'
 
 const PORT = Number(process.env.PORT) || 3001
 
 const roomManager = new RoomManager()
-const simulation = new Simulation(roomManager)
+const stats = new StatsTracker()
+const simulation = new Simulation(roomManager, stats)
 
 function generatePlayerId(): string {
   return `p_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`
@@ -51,6 +53,16 @@ const server = Bun.serve<WsData>({
     // Room browser
     if (url.pathname === '/rooms' && req.method === 'GET') {
       return corsResponse(JSON.stringify(roomManager.getRoomsResponse()), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Stats endpoint
+    if (url.pathname === '/stats' && req.method === 'GET') {
+      const livePlayers = roomManager.allRooms().reduce(
+        (sum, r) => sum + r.realPlayerCount(), 0
+      )
+      return corsResponse(JSON.stringify(stats.getStats(livePlayers)), {
         headers: { 'Content-Type': 'application/json' },
       })
     }
@@ -171,6 +183,11 @@ const server = Bun.serve<WsData>({
 
           room.addPlayer(playerId, handle, ws)
 
+          const livePlayers = roomManager.allRooms().reduce(
+            (sum, r) => sum + r.realPlayerCount(), 0
+          )
+          stats.onPlayerJoin(livePlayers)
+
           roomManager.pushActivity({
             type: 'join',
             text: `${handle} entered the arena`,
@@ -236,6 +253,10 @@ const server = Bun.serve<WsData>({
     close(ws) {
       const room = roomManager.getRoom(ws.data.roomCode)
       if (room) {
+        const player = room.players.get(ws.data.playerId)
+        if (player) {
+          stats.onPlayerDisconnect(Date.now() - player.joinedAt, player.handle)
+        }
         room.removePlayer(ws.data.playerId)
         room.removeSpectator(ws)
       }

@@ -1,13 +1,14 @@
 import { describe, test, expect } from 'bun:test'
 import { Simulation, splitPlayer } from '../simulation'
 import { Room, RoomManager, playerTotalMass } from '../room'
+import { StatsTracker } from '../stats'
 import { EAT_RATIO, MIN_MASS, SPLIT_MIN_MASS, MAX_CELLS, MERGE_TIME } from '../../shared/constants'
 import { massToRadius } from '../../shared/protocol'
 
 describe('Simulation', () => {
   test('player moves toward target', () => {
     const manager = new RoomManager()
-    const sim = new Simulation(manager)
+    const sim = new Simulation(manager, new StatsTracker())
     const room = manager.getOrCreateRoom('move-test')
     room.pellets = []
 
@@ -31,7 +32,7 @@ describe('Simulation', () => {
 
   test('bigger player eats smaller on overlap', () => {
     const manager = new RoomManager()
-    const sim = new Simulation(manager)
+    const sim = new Simulation(manager, new StatsTracker())
     const room = manager.getOrCreateRoom('eat-test')
 
     room.pellets = []
@@ -58,7 +59,7 @@ describe('Simulation', () => {
 
   test('equal-size players do not eat each other', () => {
     const manager = new RoomManager()
-    const sim = new Simulation(manager)
+    const sim = new Simulation(manager, new StatsTracker())
     const room = manager.getOrCreateRoom('equal-test')
 
     room.pellets = []
@@ -85,7 +86,7 @@ describe('Simulation', () => {
 
   test('player eats pellets', () => {
     const manager = new RoomManager()
-    const sim = new Simulation(manager)
+    const sim = new Simulation(manager, new StatsTracker())
     const room = manager.getOrCreateRoom('pellet-eat-test')
 
     room.pellets = [{ id: 0, x: 100, y: 100, word: 'tensor' }]
@@ -105,7 +106,7 @@ describe('Simulation', () => {
 
   test('mass decays over time for large players', () => {
     const manager = new RoomManager()
-    const sim = new Simulation(manager)
+    const sim = new Simulation(manager, new StatsTracker())
     const room = manager.getOrCreateRoom('decay-test')
 
     room.pellets = []
@@ -171,7 +172,7 @@ describe('Splitting', () => {
 
   test('cells merge after timer expires', () => {
     const manager = new RoomManager()
-    const sim = new Simulation(manager)
+    const sim = new Simulation(manager, new StatsTracker())
     const room = manager.getOrCreateRoom('merge-test')
     room.pellets = []
 
@@ -193,7 +194,7 @@ describe('Splitting', () => {
 
   test('cells do NOT merge before timer expires', () => {
     const manager = new RoomManager()
-    const sim = new Simulation(manager)
+    const sim = new Simulation(manager, new StatsTracker())
     const room = manager.getOrCreateRoom('no-merge-test')
     room.pellets = []
 
@@ -214,7 +215,7 @@ describe('Splitting', () => {
 
   test('sibling cells do not eat each other', () => {
     const manager = new RoomManager()
-    const sim = new Simulation(manager)
+    const sim = new Simulation(manager, new StatsTracker())
     const room = manager.getOrCreateRoom('sibling-test')
     room.pellets = []
 
