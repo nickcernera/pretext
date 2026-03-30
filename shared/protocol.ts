@@ -14,13 +14,21 @@ export type ServerMessage =
   | { t: 'leaderboard'; entries: LeaderboardEntry[]; isSnapshot: boolean }
   | { t: 'error'; msg: string }
 
-export type PlayerState = {
-  id: string
-  handle: string
+export type CellState = {
+  cellId: number
   x: number
   y: number
   mass: number
+}
+
+export type PlayerState = {
+  id: string
+  handle: string
+  x: number        // center-of-mass X
+  y: number        // center-of-mass Y
+  mass: number     // total mass
   color: string
+  cells: CellState[]
 }
 
 export type PelletState = {

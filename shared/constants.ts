@@ -14,6 +14,8 @@ export const SPLIT_VELOCITY = 600
 export const EJECT_MASS = 30
 export const EJECT_VELOCITY = 500
 export const MERGE_TIME = 15_000
+export const MAX_CELLS = 16
+export const SPLIT_DECEL = 0.88
 
 // Eating
 export const EAT_RATIO = 1.15
@@ -35,3 +37,9 @@ export const BLOB_FONT_FAMILY = '"Space Grotesk", system-ui, sans-serif'
 export const UI_FONT_FAMILY = '"Space Mono", monospace'
 export const BG_COLOR = '#050a08'
 export const RAIN_COLOR = '#00ff41'
+
+// Grid
+export const GRID_LINE_SPACING = 50
+
+// Minimap
+export const MINIMAP_SIZE = 180
