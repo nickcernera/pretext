@@ -218,15 +218,40 @@ export class LandingScreen {
     }
 
     if (user) {
-      const playBtn = makeButton(`Play as ${user.handle}`, true)
-      playBtn.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: user.handle, token: user.jwt, room: roomFromUrl }) })
-      panel.appendChild(playBtn)
+      // User identity row: avatar + handle
+      const identity = document.createElement('div')
+      identity.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:20px;'
+
+      const avatar = document.createElement('img')
+      avatar.src = user.avatar
+      avatar.alt = user.handle
+      avatar.style.cssText = 'width:40px;height:40px;border-radius:50%;border:2px solid #3a5a4a;'
+      avatar.onerror = () => { avatar.style.display = 'none' }
+      identity.appendChild(avatar)
+
+      const nameCol = document.createElement('div')
+      const displayName = document.createElement('div')
+      displayName.textContent = user.displayName
+      displayName.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:14px;color:#d0ffe0;font-weight:600;`
+      nameCol.appendChild(displayName)
+
+      const handle = document.createElement('div')
+      handle.textContent = user.handle
+      handle.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:12px;color:#4a7a5a;`
+      nameCol.appendChild(handle)
 
       const signOutLink = document.createElement('button')
-      signOutLink.textContent = 'Sign out'
-      signOutLink.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:11px;color:#3a5a4a;background:none;border:none;cursor:pointer;margin:4px 0 16px 0;text-decoration:underline;`
+      signOutLink.textContent = 'sign out'
+      signOutLink.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:10px;color:#3a5a4a;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;margin-left:auto;`
       signOutLink.addEventListener('click', () => { logout(); cleanup(); const fresh = new LandingScreen(this.canvas); fresh.show().then(resolve) })
-      panel.appendChild(signOutLink)
+
+      identity.appendChild(nameCol)
+      identity.appendChild(signOutLink)
+      panel.appendChild(identity)
+
+      const playBtn = makeButton('Play', true)
+      playBtn.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: user.handle, token: user.jwt, room: roomFromUrl }) })
+      panel.appendChild(playBtn)
     } else {
       const xBtn = makeButton('Sign in with X', false)
       xBtn.addEventListener('click', () => { cleanup(); startXAuth() })
