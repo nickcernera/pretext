@@ -62,13 +62,21 @@ export class Room {
     }
   }
 
+  private static readonly MIN_PELLET_DIST = 120
+
   spawnPellet(): PelletState {
-    return {
-      id: this.nextPelletId++,
-      x: Math.random() * WORLD_W,
-      y: Math.random() * WORLD_H,
-      word: PELLET_WORDS[Math.floor(Math.random() * PELLET_WORDS.length)],
-    }
+    const word = PELLET_WORDS[Math.floor(Math.random() * PELLET_WORDS.length)]
+    let x: number, y: number
+    let attempts = 0
+    do {
+      x = Math.random() * WORLD_W
+      y = Math.random() * WORLD_H
+      attempts++
+    } while (attempts < 20 && this.pellets.some(p => {
+      const dx = p.x - x, dy = p.y - y
+      return dx * dx + dy * dy < Room.MIN_PELLET_DIST * Room.MIN_PELLET_DIST
+    }))
+    return { id: this.nextPelletId++, x, y, word }
   }
 
   addPlayer(id: string, handle: string, ws: ServerWebSocket<WsData> | null): ServerPlayer {
