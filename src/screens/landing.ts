@@ -5,7 +5,7 @@ import { SEA_WORDS } from '@shared/words'
 import { getStoredUser, startXAuth, logout } from '../auth'
 import { cursor as customCursor } from '../game/cursor'
 import { httpFromWs, copyRoomLink, buildShareUrl } from '../share'
-import type { RoomsResponse, RoomInfo, ActivityEvent } from '@shared/protocol'
+import type { RoomsResponse, RoomInfo } from '@shared/protocol'
 
 const SEA_FONT = `12px ${UI_FONT_FAMILY}`
 const SEA_LINE_HEIGHT = 18
@@ -86,7 +86,7 @@ export class LandingScreen {
     }
     if (this.footer) {
       const rect = this.footer.getBoundingClientRect()
-      const pad = 12
+      const pad = 6
       rects.push({ x: rect.left - pad, y: rect.top - pad, w: rect.width + pad * 2, h: rect.height + pad * 2, cr: (rect.height + pad * 2) / 2 })
     }
     return rects
@@ -229,8 +229,8 @@ export class LandingScreen {
     this.panel = panel
     panel.style.cssText = `
       display: flex; flex-direction: column; align-items: center;
-      pointer-events: auto; padding: 32px 48px; border-radius: 8px;
-      max-width: 420px; width: 100%;
+      pointer-events: auto; padding: 32px 40px; border-radius: 8px;
+      max-width: 560px; width: 100%;
     `
 
     // Title
@@ -239,6 +239,7 @@ export class LandingScreen {
     title.style.cssText = `
       font-family: ${BLOB_FONT_FAMILY}; font-size: 64px; font-weight: 700;
       color: #d0ffe0; margin: 0 0 4px 0; letter-spacing: -2px;
+      white-space: nowrap;
     `
     panel.appendChild(title)
 
@@ -347,145 +348,83 @@ export class LandingScreen {
       quickPlayBtn.addEventListener('click', () => { cleanup(); resolve({ action: 'play', handle: getHandle(), token: getToken(), avatar: getAvatar() }) })
       panel.appendChild(quickPlayBtn)
 
-      // Create Room + Sign in row
-      const secondaryRow = document.createElement('div')
-      secondaryRow.style.cssText = 'display:flex;gap:8px;margin-top:8px;width:100%;justify-content:center;'
+      // Secondary actions — subtle text links
+      const linksRow = document.createElement('div')
+      linksRow.style.cssText = `display:flex;gap:6px;margin-top:14px;align-items:center;justify-content:center;`
 
-      const createRoomBtn = makeButton('Create Room', false)
-      createRoomBtn.style.minWidth = '120px'
-      createRoomBtn.addEventListener('click', () => {
-        const code = Math.random().toString(36).substring(2, 8)
-        showCreateRoomPanel(code)
-      })
-      secondaryRow.appendChild(createRoomBtn)
-
-      if (!user) {
-        const xBtn = makeButton('Sign in with X', false)
-        xBtn.style.minWidth = '120px'
-        xBtn.addEventListener('click', () => { cleanup(); startXAuth() })
-        secondaryRow.appendChild(xBtn)
+      const makeLink = (text: string, onClick: () => void): HTMLButtonElement => {
+        const link = document.createElement('button')
+        link.textContent = text
+        link.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:12px;color:#3a5a4a;background:none;border:none;cursor:pointer;padding:2px 0;transition:color 0.15s;`
+        link.addEventListener('mouseenter', () => { link.style.color = '#d0ffe0' })
+        link.addEventListener('mouseleave', () => { link.style.color = '#3a5a4a' })
+        link.addEventListener('click', onClick)
+        return link
+      }
+      const makeDot = (): HTMLSpanElement => {
+        const dot = document.createElement('span')
+        dot.textContent = '\u00b7'
+        dot.style.cssText = `font-size:12px;color:#2a3a2a;`
+        return dot
       }
 
-      panel.appendChild(secondaryRow)
+      linksRow.appendChild(makeLink('Create Room', () => {
+        const code = Math.random().toString(36).substring(2, 8)
+        showCreateRoomPanel(code)
+      }))
+      linksRow.appendChild(makeDot())
 
-      // Join by code row
-      const joinRow = document.createElement('div')
-      joinRow.style.cssText = 'display:flex;align-items:center;margin-top:16px;gap:6px;'
-
-      const roomInput = document.createElement('input')
-      roomInput.type = 'text'
-      roomInput.placeholder = 'Room code'
-      roomInput.maxLength = 12
-      roomInput.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:12px;padding:8px 12px;background:#0a150e;border:1px solid #3a5a4a;border-radius:4px;color:#d0ffe0;width:120px;outline:none;`
-      roomInput.addEventListener('focus', () => { roomInput.style.borderColor = RAIN_COLOR })
-      roomInput.addEventListener('blur', () => { roomInput.style.borderColor = '#3a5a4a' })
-
-      const joinBtn = document.createElement('button')
-      joinBtn.textContent = 'Join'
-      joinBtn.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:12px;padding:8px 16px;background:#1a2a1a;border:1px solid #3a5a4a;border-radius:4px;color:#4a7a5a;cursor:pointer;transition:all 0.15s;`
-      joinBtn.addEventListener('mouseenter', () => { joinBtn.style.color = '#d0ffe0' })
-      joinBtn.addEventListener('mouseleave', () => { joinBtn.style.color = '#4a7a5a' })
-      joinBtn.addEventListener('click', () => {
-        const code = roomInput.value.trim()
-        if (!code) return
-        cleanup()
-        resolve({ action: 'play', handle: getHandle(), token: getToken(), avatar: getAvatar(), room: code })
+      // Join Room — inline expandable input
+      const joinWrap = document.createElement('div')
+      joinWrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;'
+      const joinLink = makeLink('Join Room', () => {
+        joinLink.style.display = 'none'
+        joinInput.style.display = 'block'
+        joinInput.focus()
       })
-      roomInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinBtn.click() })
+      joinWrap.appendChild(joinLink)
+      const joinInput = document.createElement('input')
+      joinInput.type = 'text'
+      joinInput.placeholder = 'code'
+      joinInput.maxLength = 12
+      joinInput.style.cssText = `display:none;font-family:${UI_FONT_FAMILY};font-size:11px;padding:3px 6px;background:#0a150e;border:1px solid #3a5a4a;border-radius:3px;color:#d0ffe0;width:72px;outline:none;`
+      joinInput.addEventListener('focus', () => { joinInput.style.borderColor = RAIN_COLOR })
+      joinInput.addEventListener('blur', () => {
+        if (!joinInput.value.trim()) { joinInput.style.display = 'none'; joinLink.style.display = 'inline' }
+        joinInput.style.borderColor = '#3a5a4a'
+      })
+      joinInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { const c = joinInput.value.trim(); if (c) { cleanup(); resolve({ action: 'play', handle: getHandle(), token: getToken(), avatar: getAvatar(), room: c }) } }
+        if (e.key === 'Escape') { joinInput.value = ''; joinInput.blur() }
+      })
+      joinWrap.appendChild(joinInput)
+      linksRow.appendChild(joinWrap)
 
-      joinRow.appendChild(roomInput)
-      joinRow.appendChild(joinBtn)
-      panel.appendChild(joinRow)
+      if (!user) {
+        linksRow.appendChild(makeDot())
+        linksRow.appendChild(makeLink('Sign in with X', () => { cleanup(); startXAuth() }))
+      }
+      panel.appendChild(linksRow)
 
-      // --- Live Rooms browser ---
-      const roomsSection = document.createElement('div')
-      roomsSection.style.cssText = `
-        width: 100%; margin-top: 24px; border-top: 1px solid #1a2a1a;
-        padding-top: 16px;
-      `
-
-      const roomsHeader = document.createElement('div')
-      roomsHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;'
-
-      const roomsTitle = document.createElement('div')
-      roomsTitle.textContent = 'LIVE ARENAS'
-      roomsTitle.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:10px;color:#4a7a5a;letter-spacing:1.5px;`
-      roomsHeader.appendChild(roomsTitle)
-
-      const watchBtn = document.createElement('button')
-      watchBtn.textContent = 'Watch Live'
-      watchBtn.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:10px;color:#3a5a4a;background:none;border:none;cursor:pointer;text-decoration:underline;transition:color 0.15s;`
-      watchBtn.addEventListener('mouseenter', () => { watchBtn.style.color = '#d0ffe0' })
-      watchBtn.addEventListener('mouseleave', () => { watchBtn.style.color = '#3a5a4a' })
-      watchBtn.addEventListener('click', () => { cleanup(); resolve({ action: 'spectate' }) })
-      roomsHeader.appendChild(watchBtn)
-
-      roomsSection.appendChild(roomsHeader)
-
+      // Live rooms — shown only when active (no header, no empty state)
       const roomsList = document.createElement('div')
-      roomsList.style.cssText = 'display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;'
-      roomsSection.appendChild(roomsList)
+      roomsList.style.cssText = 'display:flex;flex-direction:column;gap:4px;width:100%;margin-top:20px;'
+      panel.appendChild(roomsList)
 
-      panel.appendChild(roomsSection)
-
-      // --- Activity ticker ---
-      const activitySection = document.createElement('div')
-      activitySection.style.cssText = `
-        width: 100%; margin-top: 16px; border-top: 1px solid #1a2a1a;
-        padding-top: 12px; max-height: 80px; overflow: hidden;
-      `
-      const activityTitle = document.createElement('div')
-      activityTitle.textContent = 'LIVE FEED'
-      activityTitle.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:10px;color:#4a7a5a;letter-spacing:1.5px;margin-bottom:8px;`
-      activitySection.appendChild(activityTitle)
-
-      const activityList = document.createElement('div')
-      activityList.style.cssText = 'display:flex;flex-direction:column;gap:2px;'
-      activitySection.appendChild(activityList)
-      panel.appendChild(activitySection)
-
-      // Fetch rooms + activity and populate
       const populateRooms = (data: RoomsResponse) => {
-        // Player count badge
         if (data.totalPlayers > 0) {
           playerCountEl.textContent = `${data.totalPlayers} player${data.totalPlayers !== 1 ? 's' : ''} online`
           playerCountEl.style.opacity = '1'
+        } else {
+          playerCountEl.style.opacity = '0'
         }
-
-        // Room cards — clear and rebuild
         while (roomsList.firstChild) roomsList.removeChild(roomsList.firstChild)
         const activeRooms = data.rooms.filter(r => r.playerCount > 0).sort((a, b) => b.playerCount - a.playerCount)
-
-        if (activeRooms.length === 0) {
-          const empty = document.createElement('div')
-          empty.textContent = 'No active arenas — start one!'
-          empty.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:11px;color:#3a5a4a;padding:8px 0;`
-          roomsList.appendChild(empty)
-        } else {
-          for (const room of activeRooms.slice(0, 5)) {
-            roomsList.appendChild(this.buildRoomCard(room, cleanup, resolve, getHandle, getToken, getAvatar))
-          }
-        }
-
-        // Activity feed — clear and rebuild
-        while (activityList.firstChild) activityList.removeChild(activityList.firstChild)
-        const recent = data.activity.slice(-6).reverse()
-        if (recent.length === 0) {
-          const empty = document.createElement('div')
-          empty.textContent = 'Waiting for action...'
-          empty.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:11px;color:#3a5a4a;`
-          activityList.appendChild(empty)
-        } else {
-          for (const ev of recent) {
-            const evEl = document.createElement('div')
-            evEl.textContent = ev.text
-            evEl.style.cssText = `font-family:${UI_FONT_FAMILY};font-size:11px;color:#4a7a5a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`
-            activityList.appendChild(evEl)
-          }
+        for (const room of activeRooms.slice(0, 3)) {
+          roomsList.appendChild(this.buildRoomCard(room, cleanup, resolve, getHandle, getToken, getAvatar))
         }
       }
 
-      // Initial fetch + polling
       this.fetchRooms().then(data => { if (data) populateRooms(data) })
       this.activityInterval = setInterval(() => {
         this.fetchRooms().then(data => { if (data) populateRooms(data) })
@@ -498,9 +437,11 @@ export class LandingScreen {
     const footer = document.createElement('div')
     this.footer = footer
     footer.style.cssText = `
-      position: fixed; bottom: 16px; left: 0; right: 0;
-      display: flex; justify-content: center; align-items: center; gap: 12px;
+      position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 12px;
       pointer-events: auto; z-index: 11;
+      padding: 8px 20px; border-radius: 20px;
+      background: rgba(5, 10, 8, 0.7); border: 1px solid #1a2a1a;
     `
     const makeFooterLink = (text: string, href: string): HTMLAnchorElement => {
       const a = document.createElement('a')
