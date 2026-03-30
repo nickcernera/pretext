@@ -4,8 +4,8 @@ import { drawBlob } from './blob'
 import { PelletRenderer } from './pellets'
 import { Camera } from './camera'
 import { HUD } from './hud'
-import { massToRadius, type PlayerState } from '@shared/protocol'
-import { WORLD_W, WORLD_H, RAIN_COLOR } from '@shared/constants'
+import { massToRadius, type PlayerState, type CellState } from '@shared/protocol'
+import { WORLD_W, WORLD_H, RAIN_COLOR, GRID_LINE_SPACING } from '@shared/constants'
 
 export class Renderer {
   readonly rain = new MatrixRain()
@@ -63,12 +63,13 @@ export class Renderer {
     // 2. Background (screen space)
     drawBackground(ctx, screenW, screenH)
 
-    // 3. Set world-space exclusions for rain
-    const blobHoles = players.map(p => ({
-      x: p.x,
-      y: p.y,
-      radius: massToRadius(p.mass),
-    }))
+    // 3. Set world-space exclusions for rain — include all cells
+    const blobHoles: { x: number; y: number; radius: number }[] = []
+    for (const p of players) {
+      for (const c of p.cells) {
+        blobHoles.push({ x: c.x, y: c.y, radius: massToRadius(c.mass) })
+      }
+    }
     const wordRects = this.pellets.getRects()
     this.rain.setBlobHoles(blobHoles)
     this.rain.setWordRects(wordRects)
@@ -85,21 +86,36 @@ export class Renderer {
     // 6. World boundary
     drawWorldBoundary(ctx, vp)
 
+    // 6.5. Grid background
+    drawGrid(ctx, vp)
+
     // 7. Pellets (word pellets in world space)
     this.pellets.draw(ctx)
 
-    // 8. Player blobs
-    const sorted = [...players].sort((a, b) => b.mass - a.mass)
-    for (const p of sorted) {
-      const text = playerTexts.get(p.id) || p.handle
-      drawBlob(ctx, p.x, p.y, p.mass, text, p.color, p.id === localPlayerId, p.handle, p.id, dt)
+    // 8. Player blobs — flatten all cells, sort by mass, draw each
+    type CellDraw = { cell: CellState; player: PlayerState; isLocal: boolean }
+    const allCells: CellDraw[] = []
+    for (const p of players) {
+      const isLocal = p.id === localPlayerId
+      for (const c of p.cells) {
+        allCells.push({ cell: c, player: p, isLocal })
+      }
+    }
+    allCells.sort((a, b) => a.cell.mass - b.cell.mass) // smallest first (back-to-front)
+
+    for (const { cell, player, isLocal } of allCells) {
+      const text = playerTexts.get(player.id) || player.handle
+      drawBlob(
+        ctx, cell.x, cell.y, cell.mass, text, player.color,
+        isLocal, player.handle, `${player.id}:${cell.cellId}`, dt,
+      )
     }
 
     // 9. Restore to screen space
     this.camera.restore(ctx)
 
     // 10. HUD
-    this.hud.draw(ctx, screenW, screenH)
+    this.hud.draw(ctx, screenW, screenH, players, localPlayerId)
   }
 }
 
@@ -107,13 +123,11 @@ function drawWorldBoundary(
   ctx: CanvasRenderingContext2D,
   vp: { x: number; y: number; w: number; h: number },
 ) {
-  // Only draw boundary segments that are visible
   const BORDER_W = 3
   const GLOW = 15
 
   ctx.save()
 
-  // Glow
   ctx.shadowColor = RAIN_COLOR
   ctx.shadowBlur = GLOW
   ctx.strokeStyle = RAIN_COLOR
@@ -124,20 +138,42 @@ function drawWorldBoundary(
   ctx.rect(0, 0, WORLD_W, WORLD_H)
   ctx.stroke()
 
-  // Inner darker fill outside the world (dim the area beyond the border)
   ctx.globalAlpha = 0.6
   ctx.fillStyle = '#020504'
 
-  // Draw rectangles outside the world bounds that overlap the viewport
-  const pad = 2000 // draw far enough to cover any visible area outside
-  // Top
+  const pad = 2000
   if (vp.y < 0) ctx.fillRect(vp.x - pad, vp.y - pad, vp.w + pad * 2, -vp.y + pad)
-  // Bottom
   if (vp.y + vp.h > WORLD_H) ctx.fillRect(vp.x - pad, WORLD_H, vp.w + pad * 2, vp.y + vp.h - WORLD_H + pad)
-  // Left
   if (vp.x < 0) ctx.fillRect(vp.x - pad, 0, -vp.x + pad, WORLD_H)
-  // Right
   if (vp.x + vp.w > WORLD_W) ctx.fillRect(WORLD_W, 0, vp.x + vp.w - WORLD_W + pad, WORLD_H)
+
+  ctx.restore()
+}
+
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  vp: { x: number; y: number; w: number; h: number },
+) {
+  ctx.save()
+  ctx.strokeStyle = 'rgba(0, 255, 65, 0.04)'
+  ctx.lineWidth = 1
+
+  const spacing = GRID_LINE_SPACING
+  const startX = Math.floor(Math.max(0, vp.x) / spacing) * spacing
+  const startY = Math.floor(Math.max(0, vp.y) / spacing) * spacing
+  const endX = Math.min(WORLD_W, vp.x + vp.w)
+  const endY = Math.min(WORLD_H, vp.y + vp.h)
+
+  ctx.beginPath()
+  for (let x = startX; x <= endX; x += spacing) {
+    ctx.moveTo(x, Math.max(0, vp.y))
+    ctx.lineTo(x, Math.min(WORLD_H, vp.y + vp.h))
+  }
+  for (let y = startY; y <= endY; y += spacing) {
+    ctx.moveTo(Math.max(0, vp.x), y)
+    ctx.lineTo(Math.min(WORLD_W, vp.x + vp.w), y)
+  }
+  ctx.stroke()
 
   ctx.restore()
 }
