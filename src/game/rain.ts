@@ -23,6 +23,7 @@ const MARGIN = 8
 const BLOB_PADDING = 18 // extra space around blobs
 
 type BlobHole = { x: number; y: number; radius: number }
+type WordRect = { x: number; y: number; w: number; h: number }
 
 type KillFlash = {
   text: string
@@ -37,6 +38,7 @@ export class MatrixRain {
   private prepared: PreparedTextWithSegments | null = null
   private scrollOffset = 0
   private blobHoles: BlobHole[] = []
+  private wordRects: WordRect[] = []
   private handles: string[] = []
   private bios: string[] = []
   private killFlashes: KillFlash[] = []
@@ -76,6 +78,11 @@ export class MatrixRain {
 
   setBlobHoles(holes: BlobHole[]) {
     this.blobHoles = holes
+  }
+
+  /** Screen-space rectangles for word pellets */
+  setWordRects(rects: WordRect[]) {
+    this.wordRects = rects
   }
 
   addKill(killerHandle: string, victimHandle: string, screenW: number, screenH: number) {
@@ -139,6 +146,24 @@ export class MatrixRain {
         const exc = getCircleExclusion(blob, lineTop, lineBottom)
         if (!exc) continue
         const [exLeft, exRight] = exc
+
+        const next: typeof spans = []
+        for (const span of spans) {
+          if (exRight <= span.left || exLeft >= span.right) {
+            next.push(span)
+          } else {
+            if (exLeft > span.left + 20) next.push({ left: span.left, right: exLeft })
+            if (exRight < span.right - 20) next.push({ left: exRight, right: span.right })
+          }
+        }
+        spans = next
+      }
+
+      // Also exclude word pellet rectangles
+      for (const rect of this.wordRects) {
+        if (lineBottom < rect.y || lineTop > rect.y + rect.h) continue
+        const exLeft = rect.x
+        const exRight = rect.x + rect.w
 
         const next: typeof spans = []
         for (const span of spans) {

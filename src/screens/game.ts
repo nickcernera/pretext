@@ -7,12 +7,22 @@ import {
   BASE_SPEED, SPEED_EXPONENT,
   MASS_DECAY_RATE, MIN_MASS,
   EAT_RATIO, EAT_OVERLAP,
-  PELLET_COUNT, PELLET_MASS,
+  PELLET_COUNT, PELLET_MASS_PER_CHAR,
 } from '@shared/constants'
 import {
   handleToColor, massToRadius,
   type PlayerState, type PelletState, type DeathStats, type LeaderboardEntry,
 } from '@shared/protocol'
+
+const PELLET_WORDS = [
+  'transformer', 'attention', 'gradient', 'softmax', 'backprop',
+  'embeddings', 'CUDA', 'inference', 'tokenizer', 'dropout',
+  'entropy', 'optimizer', 'tensor', 'sigmoid', 'relu',
+  'pipeline', 'latency', 'throughput', 'shard', 'replica',
+  'vector', 'matrix', 'epoch', 'batch', 'kernel',
+  'lambda', 'mutex', 'malloc', 'stack', 'heap',
+  'queue', 'hashmap', 'btree', 'socket', 'daemon',
+]
 
 const BOT_HANDLES = [
   '@synthwave', '@tensorcat', '@pixeldrift', '@neuralnet',
@@ -26,7 +36,7 @@ type Bot = PlayerState & {
   wanderTimer: number
 }
 
-type Pellet = { id: number; x: number; y: number }
+type Pellet = { id: number; x: number; y: number; word: string }
 
 export type GameOptions = {
   mode: 'local' | 'online'
@@ -231,9 +241,9 @@ export class GameScreen {
     if (this.player.mass > this.peakMass) this.peakMass = this.player.mass
 
     this.updateBots(dt)
-    this.eatPellets(this.player)
+    this.eatPellets(this.player, this.playerId)
     for (const bot of this.bots) {
-      this.eatPellets(bot)
+      this.eatPellets(bot, bot.id)
     }
     this.checkPlayerBotCollisions()
     this.checkBotBotCollisions()
@@ -326,7 +336,7 @@ export class GameScreen {
     }
   }
 
-  private eatPellets(entity: PlayerState) {
+  private eatPellets(entity: PlayerState, entityId: string) {
     const radius = massToRadius(entity.mass)
     for (let i = this.pellets.length - 1; i >= 0; i--) {
       const p = this.pellets[i]
@@ -334,7 +344,10 @@ export class GameScreen {
       const dy = entity.y - p.y
       const dist = Math.sqrt(dx * dx + dy * dy)
       if (dist < radius) {
-        entity.mass += PELLET_MASS
+        entity.mass += p.word.length * PELLET_MASS_PER_CHAR
+        // Add eaten word to this entity's blob text
+        const existing = this.playerTexts.get(entityId) || ''
+        this.playerTexts.set(entityId, existing + ' ' + p.word)
         this.pellets.splice(i, 1)
       }
     }
@@ -528,6 +541,7 @@ export class GameScreen {
       id: this.nextPelletId++,
       x: Math.random() * WORLD_W,
       y: Math.random() * WORLD_H,
+      word: PELLET_WORDS[Math.floor(Math.random() * PELLET_WORDS.length)],
     }
   }
 }

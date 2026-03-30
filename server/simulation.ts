@@ -9,7 +9,7 @@ import {
   EAT_OVERLAP,
   WORLD_W,
   WORLD_H,
-  PELLET_MASS,
+  PELLET_MASS_PER_CHAR,
 } from '../shared/constants'
 import { massToRadius } from '../shared/protocol'
 import type { ServerMessage, PlayerState, PelletState, DeathStats } from '../shared/protocol'
@@ -170,7 +170,8 @@ export class Simulation {
         const dy = p.y - pellet.y
         const dist = Math.sqrt(dx * dx + dy * dy)
         if (dist < pr) {
-          p.mass += PELLET_MASS
+          p.mass += pellet.word.length * PELLET_MASS_PER_CHAR
+          p.text += ' ' + pellet.word
           if (p.mass > p.peakMass) p.peakMass = p.mass
           return false
         }

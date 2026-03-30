@@ -19,10 +19,10 @@ export const MERGE_TIME = 15_000
 export const EAT_RATIO = 1.15
 export const EAT_OVERLAP = 0.6
 
-// Pellets
-export const PELLET_COUNT = 800
-export const PELLET_MASS = 10
-export const PELLET_RADIUS = 4
+// Word Pellets
+export const PELLET_COUNT = 150
+export const PELLET_MASS_PER_CHAR = 3 // mass = word.length * this
+export const PELLET_FONT_SIZE = 24 // rendered size in the arena
 
 // Room
 export const ROOM_CAPACITY = 30

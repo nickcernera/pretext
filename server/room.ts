@@ -7,9 +7,18 @@ import {
   ROOM_IDLE_TIMEOUT,
   LEADERBOARD_INTERVAL,
   MIN_MASS,
-  PELLET_MASS,
 } from '../shared/constants'
 import { handleToColor } from '../shared/protocol'
+
+const PELLET_WORDS = [
+  'transformer', 'attention', 'gradient', 'softmax', 'backprop',
+  'embeddings', 'CUDA', 'inference', 'tokenizer', 'dropout',
+  'entropy', 'optimizer', 'tensor', 'sigmoid', 'relu',
+  'pipeline', 'latency', 'throughput', 'shard', 'replica',
+  'vector', 'matrix', 'epoch', 'batch', 'kernel',
+  'lambda', 'mutex', 'malloc', 'stack', 'heap',
+  'queue', 'hashmap', 'btree', 'socket', 'daemon',
+]
 import type { PelletState, LeaderboardEntry } from '../shared/protocol'
 
 export type ServerPlayer = {
@@ -49,11 +58,16 @@ export class Room {
 
   private spawnInitialPellets() {
     for (let i = 0; i < PELLET_COUNT; i++) {
-      this.pellets.push({
-        id: this.nextPelletId++,
-        x: Math.random() * WORLD_W,
-        y: Math.random() * WORLD_H,
-      })
+      this.pellets.push(this.spawnPellet())
+    }
+  }
+
+  spawnPellet(): PelletState {
+    return {
+      id: this.nextPelletId++,
+      x: Math.random() * WORLD_W,
+      y: Math.random() * WORLD_H,
+      word: PELLET_WORDS[Math.floor(Math.random() * PELLET_WORDS.length)],
     }
   }
 
@@ -116,11 +130,7 @@ export class Room {
   respawnPellets() {
     const deficit = PELLET_COUNT - this.pellets.length
     for (let i = 0; i < deficit; i++) {
-      this.pellets.push({
-        id: this.nextPelletId++,
-        x: Math.random() * WORLD_W,
-        y: Math.random() * WORLD_H,
-      })
+      this.pellets.push(this.spawnPellet())
     }
   }
 

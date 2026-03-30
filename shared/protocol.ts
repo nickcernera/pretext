@@ -27,6 +27,7 @@ export type PelletState = {
   id: number
   x: number
   y: number
+  word: string
 }
 
 export type DeathStats = {

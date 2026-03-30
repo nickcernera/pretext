@@ -54,8 +54,21 @@ export class Renderer {
       return { x: screen.x, y: screen.y, radius: r * this.camera.scale }
     })
 
-    // 4. Matrix rain — text flows around blob holes
+    // 4. Compute screen-space word pellet rects for rain exclusion
+    const worldRects = this.pellets.getRects()
+    const screenRects = worldRects.map(r => {
+      const tl = this.worldToScreen(r.x, r.y, screenW, screenH)
+      return {
+        x: tl.x,
+        y: tl.y,
+        w: r.w * this.camera.scale,
+        h: r.h * this.camera.scale,
+      }
+    })
+
+    // 5. Matrix rain — text flows around blobs AND word pellets
     this.rain.setBlobHoles(blobHoles)
+    this.rain.setWordRects(screenRects)
     this.rain.update(dt, screenH)
     this.rain.draw(ctx, screenW, screenH)
 

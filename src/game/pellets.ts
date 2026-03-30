@@ -1,30 +1,58 @@
-import { PELLET_RADIUS } from '@shared/constants'
+import { PELLET_FONT_SIZE, BLOB_FONT_FAMILY, RAIN_COLOR } from '@shared/constants'
+import type { PelletState } from '@shared/protocol'
 
-type Pellet = {
-  id: number
-  x: number
-  y: number
-  color: string
+type RenderedPellet = PelletState & {
+  measuredWidth: number
 }
 
-const PELLET_COLORS = ['#1a4a2a', '#1a2a4a', '#2a4a3a', '#1a3a3a', '#2a3a1a', '#3a2a3a']
+export type PelletRect = {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+const FONT = `${PELLET_FONT_SIZE}px ${BLOB_FONT_FAMILY}`
 
 export class PelletRenderer {
-  private pellets: Pellet[] = []
+  private pellets: RenderedPellet[] = []
+  private measured = false
 
-  setPellets(pellets: { id: number; x: number; y: number }[]) {
+  setPellets(pellets: PelletState[]) {
     this.pellets = pellets.map(p => ({
       ...p,
-      color: PELLET_COLORS[p.id % PELLET_COLORS.length],
+      measuredWidth: 0,
+    }))
+    this.measured = false
+  }
+
+  /** Get bounding rects in world space for rain exclusion */
+  getRects(): PelletRect[] {
+    const h = PELLET_FONT_SIZE * 1.4
+    return this.pellets.map(p => ({
+      x: p.x - 6,
+      y: p.y - h / 2 - 4,
+      w: p.measuredWidth + 12,
+      h: h + 8,
     }))
   }
 
   draw(ctx: CanvasRenderingContext2D) {
-    for (const p of this.pellets) {
-      ctx.beginPath()
-      ctx.arc(p.x, p.y, PELLET_RADIUS, 0, Math.PI * 2)
-      ctx.fillStyle = p.color
-      ctx.fill()
+    ctx.font = FONT
+    ctx.textBaseline = 'middle'
+
+    if (!this.measured) {
+      for (const p of this.pellets) {
+        p.measuredWidth = ctx.measureText(p.word).width
+      }
+      this.measured = true
     }
+
+    for (const p of this.pellets) {
+      ctx.globalAlpha = 0.45
+      ctx.fillStyle = RAIN_COLOR
+      ctx.fillText(p.word, p.x, p.y)
+    }
+    ctx.globalAlpha = 1
   }
 }

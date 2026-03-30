@@ -2,28 +2,34 @@ import { prepareWithSegments, layoutNextLine, type PreparedTextWithSegments, typ
 import { BLOB_FONT_FAMILY } from '@shared/constants'
 import { massToRadius } from '@shared/protocol'
 
-type PreparedBlob = {
-  text: string
-  fontSize: number
-  prepared: PreparedTextWithSegments
-}
+const cache = new Map<string, PreparedTextWithSegments>()
 
-const cache = new Map<string, PreparedBlob>()
-
-function getPrepared(text: string, fontSize: number): PreparedTextWithSegments {
-  const key = `${text}:${fontSize}`
+function getPrepared(text: string, font: string): PreparedTextWithSegments {
+  const key = `${font}|${text}`
   const cached = cache.get(key)
-  if (cached && cached.text === text && cached.fontSize === fontSize) {
-    return cached.prepared
-  }
-  const font = `${fontSize}px ${BLOB_FONT_FAMILY}`
+  if (cached) return cached
   const prepared = prepareWithSegments(text, font)
-  cache.set(key, { text, fontSize, prepared })
-  if (cache.size > 200) {
+  cache.set(key, prepared)
+  if (cache.size > 300) {
     const first = cache.keys().next().value
     if (first) cache.delete(first)
   }
   return prepared
+}
+
+/** Split blob text into handles (@words, higher value) and plain words (lower value) */
+function splitText(text: string): { handles: string; words: string } {
+  const tokens = text.trim().split(/\s+/)
+  const handles: string[] = []
+  const words: string[] = []
+  for (const t of tokens) {
+    if (t.startsWith('@')) handles.push(t)
+    else if (t.length > 0) words.push(t)
+  }
+  return {
+    handles: handles.join('  '),
+    words: words.join('  '),
+  }
 }
 
 export function drawBlob(
@@ -50,7 +56,6 @@ export function drawBlob(
   ctx.fillStyle = fillGrad
   ctx.fill()
 
-  // Glow for the local player
   if (isPlayer) {
     ctx.shadowColor = color
     ctx.shadowBlur = radius * 0.5
@@ -60,41 +65,81 @@ export function drawBlob(
     ctx.shadowBlur = 0
   }
 
-  // Border
   ctx.strokeStyle = colorToAlpha(color, 0.35)
   ctx.lineWidth = 1.5
   ctx.stroke()
 
-  // --- ALWAYS use pretext for text layout ---
-  // Font scales with blob: small blobs get small text, big blobs get big flowing text
-  const fontSize = Math.max(8, Math.min(26, radius * 0.22))
-  const lineHeight = fontSize * 1.35
-  const padding = fontSize * 0.3
+  // --- Two-layer text rendering ---
+  const { handles, words } = splitText(text)
 
-  const prepared = getPrepared(text, fontSize)
-  ctx.font = `${fontSize}px ${BLOB_FONT_FAMILY}`
+  // Layer 1: Handles — larger, brighter, centered
+  const handleSize = Math.max(10, Math.min(28, radius * 0.24))
+  const handleLines = layoutInCircle(handles, handleSize, radius, 0.3)
+
+  // Layer 2: Words — smaller, dimmer, fills remaining space
+  const wordSize = Math.max(7, Math.min(16, radius * 0.13))
+  // Offset words below handles
+  const handleBlockHeight = handleLines.length * handleSize * 1.35
+  const wordLines = words.length > 0
+    ? layoutInCircle(words, wordSize, radius, 0.25)
+    : []
+
+  // Compute total block height and center everything
+  const handleLH = handleSize * 1.35
+  const wordLH = wordSize * 1.35
+  const gap = handleLines.length > 0 && wordLines.length > 0 ? handleSize * 0.3 : 0
+  const totalHeight = handleLines.length * handleLH + gap + wordLines.length * wordLH
+  let drawY = y - totalHeight / 2
+
+  // Draw handles (bright)
   ctx.textBaseline = 'top'
   ctx.fillStyle = color
+  ctx.font = `bold ${handleSize}px ${BLOB_FONT_FAMILY}`
+  for (const line of handleLines) {
+    ctx.fillText(line.text, x - line.width / 2, drawY)
+    drawY += handleLH
+  }
+
+  // Draw words (dimmer)
+  if (wordLines.length > 0) {
+    drawY += gap
+    ctx.fillStyle = colorToAlpha(color, 0.5)
+    ctx.font = `${wordSize}px ${BLOB_FONT_FAMILY}`
+    for (const line of wordLines) {
+      ctx.fillText(line.text, x - line.width / 2, drawY)
+      drawY += wordLH
+    }
+  }
+}
+
+type LayoutLine = { text: string; width: number }
+
+function layoutInCircle(
+  text: string,
+  fontSize: number,
+  radius: number,
+  padding: number, // fraction of fontSize
+): LayoutLine[] {
+  if (!text || text.trim().length === 0) return []
+
+  const font = `${fontSize}px ${BLOB_FONT_FAMILY}`
+  const prepared = getPrepared(text, font)
+  const lineHeight = fontSize * 1.35
+  const pad = fontSize * padding
 
   let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
-
-  // Compute all lines that fit inside the circle
-  const lines: { text: string; width: number }[] = []
+  const lines: LayoutLine[] = []
   const maxIter = Math.ceil((radius * 2) / lineHeight) + 2
 
   for (let i = 0; i < maxIter; i++) {
-    // y position of this line relative to blob center
-    const yOff = -radius + padding + i * lineHeight
+    const yOff = -radius + pad + i * lineHeight
     const lineMid = yOff + fontSize / 2
     const distFromCenter = Math.abs(lineMid)
 
-    // Skip lines outside the circle
-    if (distFromCenter >= radius - padding) continue
+    if (distFromCenter >= radius - pad) continue
 
-    // Chord width at this y position — this is the key pretext integration:
-    // each line gets a DIFFERENT maxWidth based on the circle geometry
     const chordHalf = Math.sqrt(radius * radius - distFromCenter * distFromCenter)
-    const maxWidth = chordHalf * 2 - padding * 2
+    const maxWidth = chordHalf * 2 - pad * 2
 
     if (maxWidth < fontSize) continue
 
@@ -105,17 +150,7 @@ export function drawBlob(
     cursor = line.end
   }
 
-  // Vertically center the text block
-  const blockHeight = lines.length * lineHeight
-  const startY = -blockHeight / 2 + lineHeight * 0.15
-
-  for (let i = 0; i < lines.length; i++) {
-    ctx.fillText(
-      lines[i].text,
-      x - lines[i].width / 2,
-      y + startY + i * lineHeight,
-    )
-  }
+  return lines
 }
 
 function colorToFill(hsl: string, alpha: number): string {
