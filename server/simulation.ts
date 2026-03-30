@@ -16,7 +16,7 @@ import {
   MAX_CELLS,
   MERGE_TIME,
 } from '../shared/constants'
-import { massToRadius } from '../shared/protocol'
+import { massToRadius, pelletRadius } from '../shared/protocol'
 import type { ServerMessage, PlayerState, PelletState, CellState } from '../shared/protocol'
 import type { Room, ServerPlayer, ServerCell } from './room'
 import { playerTotalMass, playerCenterOfMass } from './room'
@@ -258,6 +258,12 @@ export class Simulation {
             }
             this.broadcastToRoom(room, killMsg)
 
+            this.roomManager.pushActivity({
+              type: 'kill',
+              text: `${killerPlayer.handle} devoured ${victimPlayer.handle}`,
+              ts: Date.now(),
+            })
+
             // Death message
             if (victimPlayer.ws) {
               const diedMsg: ServerMessage = {
@@ -295,7 +301,7 @@ export class Simulation {
           const dx = c.x - pellet.x
           const dy = c.y - pellet.y
           const dist = Math.sqrt(dx * dx + dy * dy)
-          if (dist < cr) {
+          if (dist < cr + pelletRadius(pellet.word)) {
             c.mass += pellet.word.length * PELLET_MASS_PER_CHAR
             p.text += ' ' + pellet.word
             const totalMass = playerTotalMass(p)

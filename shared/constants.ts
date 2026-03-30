@@ -19,12 +19,18 @@ export const SPLIT_DECEL = 0.88
 
 // Eating
 export const EAT_RATIO = 1.15
-export const EAT_OVERLAP = 0.6
+export const EAT_OVERLAP = 0.5
 
 // Word Pellets
 export const PELLET_COUNT = 150
 export const PELLET_MASS_PER_CHAR = 3 // mass = word.length * this
 export const PELLET_FONT_SIZE = 24 // rendered size in the arena
+export const PELLET_HITBOX_PER_CHAR = 2 // hitbox radius = word.length * this
+
+// Pellet visual feedback
+export const PELLET_MAGNET_RANGE = 1.8 // magnetism activates at this * eat range
+export const PELLET_MAGNET_STRENGTH = 0.4 // pull fraction of eat range at max
+export const PELLET_GLOW_RANGE = 2.0 // glow activates at this * eat range
 
 // Room
 export const ROOM_CAPACITY = 30

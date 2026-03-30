@@ -4,6 +4,7 @@ export type ClientMessage =
   | { t: 'input'; x: number; y: number }
   | { t: 'split' }
   | { t: 'eject' }
+  | { t: 'spectate'; room?: string }
 
 // --- Server → Client ---
 export type ServerMessage =
@@ -53,6 +54,26 @@ export type LeaderboardEntry = {
   kills: number
 }
 
+// --- Room browser / activity ---
+export type RoomInfo = {
+  code: string
+  playerCount: number
+  topPlayer: string | null
+  topMass: number
+}
+
+export type ActivityEvent = {
+  type: 'kill' | 'join' | 'milestone'
+  text: string
+  ts: number
+}
+
+export type RoomsResponse = {
+  rooms: RoomInfo[]
+  totalPlayers: number
+  activity: ActivityEvent[]
+}
+
 export function handleToColor(handle: string): string {
   let hash = 0
   for (let i = 0; i < handle.length; i++) {
@@ -64,4 +85,8 @@ export function handleToColor(handle: string): string {
 
 export function massToRadius(mass: number): number {
   return Math.sqrt(mass / Math.PI) * 4
+}
+
+export function pelletRadius(word: string): number {
+  return word.length * 2 // PELLET_HITBOX_PER_CHAR inlined to avoid circular dep
 }
