@@ -12,18 +12,18 @@ export type PelletRect = {
   h: number
 }
 
-const FONT = `${PELLET_FONT_SIZE}px ${BLOB_FONT_FAMILY}`
+const FONT = `bold ${PELLET_FONT_SIZE}px ${BLOB_FONT_FAMILY}`
+const PELLET_COLOR = '#80ffa0'
 
 export class PelletRenderer {
   private pellets: RenderedPellet[] = []
-  private measured = false
+  private widthCache = new Map<string, number>()
 
   setPellets(pellets: PelletState[]) {
     this.pellets = pellets.map(p => ({
       ...p,
-      measuredWidth: 0,
+      measuredWidth: this.widthCache.get(p.word) ?? 0,
     }))
-    this.measured = false
   }
 
   /** Get bounding rects in world space for rain exclusion */
@@ -41,18 +41,18 @@ export class PelletRenderer {
     ctx.font = FONT
     ctx.textBaseline = 'middle'
 
-    if (!this.measured) {
-      for (const p of this.pellets) {
-        p.measuredWidth = ctx.measureText(p.word).width
-      }
-      this.measured = true
-    }
-
+    ctx.shadowColor = PELLET_COLOR
+    ctx.shadowBlur = 6
     for (const p of this.pellets) {
-      ctx.globalAlpha = 0.45
-      ctx.fillStyle = RAIN_COLOR
+      if (!p.measuredWidth) {
+        p.measuredWidth = ctx.measureText(p.word).width
+        this.widthCache.set(p.word, p.measuredWidth)
+      }
+      ctx.globalAlpha = 0.7
+      ctx.fillStyle = PELLET_COLOR
       ctx.fillText(p.word, p.x, p.y)
     }
+    ctx.shadowBlur = 0
     ctx.globalAlpha = 1
   }
 }
