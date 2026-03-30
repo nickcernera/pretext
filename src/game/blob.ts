@@ -169,12 +169,6 @@ export function drawBlob(
     ctx.arc(x, y, radius - 1, 0, Math.PI * 2)
     ctx.clip()
 
-    // DEBUG: bright fill to verify clip region + words exist
-    ctx.globalAlpha = 0.15
-    ctx.fillStyle = '#ff0000'
-    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2)
-    ctx.globalAlpha = 1
-
     drawBlobTextSea(ctx, x, y, radius, words, obstacles, color, textOffX, textOffY)
 
     ctx.restore()
@@ -242,25 +236,14 @@ function drawBlobTextSea(
   const lineHeight = fontSize * 1.4
   const font = `${fontSize}px ${UI_FONT_FAMILY}`
 
-  // Build corpus from eaten words (repeated to fill the circle)
+  // Build corpus from eaten words — no artificial repetition
+  // The sea grows naturally as you eat more
   const linesNeeded = Math.ceil((radius * 2) / lineHeight) + 2
-  const wordsPerLine = 12
-  const corpus: string[] = []
-  const total = linesNeeded * wordsPerLine
-  for (let i = 0; i < total; i++) {
-    corpus.push(words[i % words.length])
-  }
-  const corpusStr = corpus.join('  ')
+  const corpusStr = words.join('  ')
   const prepared = getPrepared(corpusStr, font)
 
   ctx.font = font
   ctx.textBaseline = 'top'
-
-  // DEBUG: log once
-  if (!(drawBlobTextSea as any)._logged) {
-    (drawBlobTextSea as any)._logged = true
-    console.log('[blob-sea] words:', words.length, 'radius:', radius, 'fontSize:', fontSize, 'obstacles:', obstacles.length)
-  }
 
   let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
   const pad = 3
@@ -290,10 +273,7 @@ function drawBlobTextSea(
       if (maxW < fontSize * 1.5) continue
 
       const line = layoutNextLine(prepared, cursor, maxW)
-      if (!line) {
-        cursor = { segmentIndex: 0, graphemeIndex: 0 }
-        continue
-      }
+      if (!line) break // corpus exhausted — sea grows as you eat more
 
       ctx.globalAlpha = 0.45
       ctx.fillStyle = color

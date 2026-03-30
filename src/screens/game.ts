@@ -122,6 +122,29 @@ export class GameScreen {
         this.renderer.hud.setRoomCode(room)
       },
       onState: (players, pellets) => {
+        // Detect eaten pellets by diffing with previous tick
+        if (this.onlinePellets.length > 0 && players.length > 0) {
+          const currentIds = new Set(pellets.map(p => p.id))
+          for (const prev of this.onlinePellets) {
+            if (!currentIds.has(prev.id)) {
+              // This pellet was eaten — find nearest player
+              let closest: { id: string; handle: string; dist: number } | null = null
+              for (const p of players) {
+                const dx = p.x - prev.x
+                const dy = p.y - prev.y
+                const dist = dx * dx + dy * dy
+                if (!closest || dist < closest.dist) {
+                  closest = { id: p.id, handle: p.handle, dist }
+                }
+              }
+              if (closest) {
+                const existing = this.playerTexts.get(closest.id) || closest.handle
+                this.playerTexts.set(closest.id, existing + ' ' + prev.word)
+              }
+            }
+          }
+        }
+
         this.onlinePlayers = players
         this.onlinePellets = pellets
         this.interpolator!.update(players)
