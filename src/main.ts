@@ -2,6 +2,7 @@ import { LandingScreen } from './screens/landing'
 import { DeathScreen } from './screens/death'
 import { GameScreen } from './screens/game'
 import { handleCallback, getStoredUser } from './auth'
+import { cursor } from './game/cursor'
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
@@ -18,6 +19,7 @@ function resize() {
 
 resize()
 window.addEventListener('resize', resize)
+cursor.init()
 
 async function main() {
   // Handle OAuth callback
