@@ -128,10 +128,16 @@ export class Simulation {
 
   runToFrame(frame: number, fps: number): void {
     for (let i = 0; i < frame; i++) {
-      const inSlowMo = this.config.slowMoRange &&
-        i >= this.config.slowMoRange[0] && i <= this.config.slowMoRange[1];
-      const dt = inSlowMo ? 0.5 / fps : 1 / fps;
-      this.step(dt);
+      let speedMul = 1;
+      if (this.config.slowMoRange) {
+        const [start, end] = this.config.slowMoRange;
+        if (i >= start && i <= end) {
+          // Smooth cosine ease: 1x → 0.4x → 1x over the range
+          const t = (i - start) / (end - start);
+          speedMul = 0.4 + 0.6 * Math.abs(Math.cos(t * Math.PI));
+        }
+      }
+      this.step(speedMul / fps);
     }
   }
 
