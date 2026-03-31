@@ -1,95 +1,69 @@
-import {
-  AbsoluteFill,
-  Sequence,
-  interpolate,
-  useCurrentFrame,
-  useVideoConfig,
-} from "remotion";
+import { AbsoluteFill, Sequence, useVideoConfig } from "remotion";
+import { HomepageScene } from "./HomepageScene";
 import { GameCanvas } from "./GameCanvas";
-import { GlitchTitle } from "./GlitchTitle";
-import { Typewriter } from "./Typewriter";
+import { GreenFlash } from "./GreenFlash";
+import { ScanlineOverlay } from "./ScanlineOverlay";
 import { CallToAction } from "./CallToAction";
+import { ACT_1, ACT_2, ACT_3 } from "./ActConfig";
 
 export const LaunchVideo: React.FC = () => {
-  const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Fade in from black at start
-  const fadeIn = interpolate(frame, [0, fps * 1.5], [0, 1], {
-    extrapolateRight: "clamp",
-  });
-
-  // Fade to black at end
-  const fadeOut = interpolate(
-    frame,
-    [fps * 14.5, fps * 16],
-    [1, 0],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
-
-  const masterOpacity = Math.min(fadeIn, fadeOut);
+  const HOMEPAGE_END = Math.floor(fps * 3.5);
+  const FLASH_DUR = 3;
+  const ACT_DUR = Math.floor(fps * 3.4);
+  const ACT1_START = HOMEPAGE_END + FLASH_DUR;
+  const ACT1_END = ACT1_START + ACT_DUR;
+  const ACT2_START = ACT1_END + FLASH_DUR;
+  const ACT2_END = ACT2_START + ACT_DUR;
+  const ACT3_START = ACT2_END + FLASH_DUR;
+  const ACT3_END = ACT3_START + ACT_DUR;
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#050a08" }}>
-      {/* Layer 1: Real gameplay (full duration) */}
-      <AbsoluteFill style={{ opacity: masterOpacity }}>
-        <GameCanvas />
-      </AbsoluteFill>
-
-      {/* Layer 2: Dark overlay for title readability */}
-      <Sequence from={0} durationInFrames={fps * 6}>
-        <AbsoluteFill
-          style={{
-            backgroundColor: `rgba(5, 10, 8, ${interpolate(
-              frame,
-              [0, fps * 4, fps * 6],
-              [0.5, 0.5, 0],
-              { extrapolateRight: "clamp" },
-            )})`,
-          }}
-        />
+      {/* Homepage Intro */}
+      <Sequence from={0} durationInFrames={HOMEPAGE_END}>
+        <HomepageScene />
       </Sequence>
 
-      {/* Scene 1: Title glitch decode (0–5s) */}
-      <Sequence from={0} durationInFrames={fps * 5}>
-        <GlitchTitle />
+      {/* Flash 1 */}
+      <Sequence from={HOMEPAGE_END} durationInFrames={FLASH_DUR}>
+        <GreenFlash />
       </Sequence>
 
-      {/* Scene 1b: Tagline typewriter (2.5–6s) */}
-      <Sequence
-        from={Math.floor(fps * 2.5)}
-        durationInFrames={Math.floor(fps * 3.5)}
-        layout="none"
-      >
-        <AbsoluteFill
-          style={{
-            justifyContent: "center",
-            alignItems: "center",
-            paddingTop: 200,
-          }}
-        >
-          <Typewriter
-            text="eat words. absorb players. become the text."
-            fontSize={32}
-            charsPerFrame={2}
-          />
-        </AbsoluteFill>
+      {/* Act 1: The Spawn */}
+      <Sequence from={ACT1_START} durationInFrames={ACT_DUR}>
+        <GameCanvas config={ACT_1} />
       </Sequence>
 
-      {/* Scene 3: CTA (13–16s) */}
-      <Sequence from={fps * 13} durationInFrames={fps * 3}>
-        <AbsoluteFill
-          style={{
-            backgroundColor: `rgba(5, 10, 8, ${interpolate(
-              frame - fps * 13,
-              [0, fps * 0.5],
-              [0, 0.5],
-              { extrapolateRight: "clamp" },
-            )})`,
-          }}
-        />
+      {/* Flash 2 */}
+      <Sequence from={ACT1_END} durationInFrames={FLASH_DUR}>
+        <GreenFlash />
+      </Sequence>
+
+      {/* Act 2: The Hunt */}
+      <Sequence from={ACT2_START} durationInFrames={ACT_DUR}>
+        <GameCanvas config={ACT_2} />
+      </Sequence>
+
+      {/* Flash 3 */}
+      <Sequence from={ACT2_END} durationInFrames={FLASH_DUR}>
+        <GreenFlash />
+      </Sequence>
+
+      {/* Act 3: The Domination */}
+      <Sequence from={ACT3_START} durationInFrames={ACT_DUR}>
+        <GameCanvas config={ACT_3} />
+      </Sequence>
+
+      {/* CTA */}
+      <Sequence from={ACT3_END} durationInFrames={480 - ACT3_END}>
+        <AbsoluteFill style={{ backgroundColor: "rgba(5, 10, 8, 0.6)" }} />
         <CallToAction />
       </Sequence>
+
+      {/* Scanline overlay (full duration) */}
+      <ScanlineOverlay />
     </AbsoluteFill>
   );
 };
