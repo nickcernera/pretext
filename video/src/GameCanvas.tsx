@@ -1,15 +1,71 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { Renderer } from "~game/renderer";
 import { NoopHUD } from "./NoopHUD";
 import { Simulation } from "./Simulation";
 import type { ActConfig } from "./ActConfig";
+import type { PlayerState, PelletState } from "@shared/protocol";
+
+type FrameSnapshot = {
+  players: PlayerState[];
+  pellets: PelletState[];
+  playerTexts: Map<string, string>;
+  prevPlayerPos: { x: number; y: number } | null;
+};
+
+/**
+ * Pre-simulate all frames for an act and cache the results.
+ * This runs once per act config and eliminates O(N) re-simulation per frame.
+ */
+function preSimulate(config: ActConfig, totalFrames: number, fps: number): FrameSnapshot[] {
+  const snapshots: FrameSnapshot[] = [];
+  const sim = Simulation.fromConfig(config);
+
+  let prevPos: { x: number; y: number } | null = null;
+
+  for (let i = 0; i <= totalFrames; i++) {
+    // Capture current state BEFORE stepping (frame 0 = initial state)
+    const ps = sim.getPlayers();
+    const localP = ps.find((p) => p.id === "player");
+
+    snapshots.push({
+      players: ps,
+      pellets: [...sim.getPellets()],
+      playerTexts: new Map(sim.getPlayerTexts()),
+      prevPlayerPos: prevPos,
+    });
+
+    // Save current position for next frame's prevPlayerPos
+    if (localP) {
+      prevPos = { x: localP.x, y: localP.y };
+    }
+
+    // Step to next frame
+    let speedMul = 1;
+    if (config.slowMoRange) {
+      const [start, end] = config.slowMoRange;
+      if (i >= start && i <= end) {
+        const t = (i - start) / (end - start);
+        speedMul = 0.4 + 0.6 * Math.abs(Math.cos(t * Math.PI));
+      }
+    }
+    sim.step(speedMul / fps);
+  }
+
+  return snapshots;
+}
 
 export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
+
+  // Pre-simulate all frames once (memoized by config reference)
+  const snapshots = useMemo(
+    () => preSimulate(config, 120, fps), // 120 frames max per act (~4s at 30fps)
+    [config, fps],
+  );
 
   useEffect(() => {
     const renderer = new Renderer();
@@ -21,13 +77,11 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
     ];
     renderer.rain.setHandles(handles);
 
-    // Override camera zoom: monkey-patch follow() to preserve our zoom
     if (config.cameraZoom) {
       const zoom = config.cameraZoom;
       const originalFollow = renderer.camera.follow.bind(renderer.camera);
       renderer.camera.follow = (px: number, py: number, pm: number, sw: number, sh: number) => {
         originalFollow(px, py, pm, sw, sh);
-        // Override the mass-based zoom with our cinematic zoom
         (renderer.camera as any).targetScale = zoom;
       };
       renderer.camera.scale = zoom;
@@ -45,17 +99,11 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const sim = Simulation.fromConfig(config);
-    sim.runToFrame(frame, fps);
+    // O(1) lookup — no simulation work per frame
+    const snap = snapshots[Math.min(frame, snapshots.length - 1)];
 
-    const players = sim.getPlayers();
-    // Previous frame's player position (captured during runToFrame, no extra sim needed)
-    const prevPos = sim.getPrevPlayerPos();
-    const pellets = sim.getPellets();
-    const playerTexts = sim.getPlayerTexts();
-
-    renderer.pellets.setPellets(pellets);
-    const localPlayer = players.find((p) => p.id === "player");
+    renderer.pellets.setPellets(snap.pellets);
+    const localPlayer = snap.players.find((p) => p.id === "player");
     if (localPlayer) {
       renderer.pellets.setLocalCells(
         localPlayer.cells.map((c) => ({
@@ -65,14 +113,13 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
         })),
       );
 
-      // Smooth camera: lerp between previous and current COM to avoid
-      // jarring jumps when split shifts the center-of-mass
+      // Smooth camera
       const CAMERA_SMOOTH = 0.3;
       let camX = localPlayer.x;
       let camY = localPlayer.y;
-      if (prevPos) {
-        camX = prevPos.x + (localPlayer.x - prevPos.x) * (1 - CAMERA_SMOOTH);
-        camY = prevPos.y + (localPlayer.y - prevPos.y) * (1 - CAMERA_SMOOTH);
+      if (snap.prevPlayerPos) {
+        camX = snap.prevPlayerPos.x + (localPlayer.x - snap.prevPlayerPos.x) * (1 - CAMERA_SMOOTH);
+        camY = snap.prevPlayerPos.y + (localPlayer.y - snap.prevPlayerPos.y) * (1 - CAMERA_SMOOTH);
       }
 
       renderer.camera.x = camX - width / 2;
@@ -82,8 +129,8 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
     }
 
     const now = (frame / fps) * 1000;
-    renderer.draw(ctx, width, height, players, "player", playerTexts, now);
-  }, [frame, fps, width, height, config]);
+    renderer.draw(ctx, width, height, snap.players, "player", snap.playerTexts, now);
+  }, [frame, fps, width, height, config, snapshots]);
 
   return (
     <AbsoluteFill>
