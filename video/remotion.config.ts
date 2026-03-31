@@ -15,12 +15,12 @@ Config.overrideWebpackConfig((config) => {
   config.resolve = config.resolve || {};
   config.resolve.alias = {
     ...(config.resolve.alias || {}),
-    "@shared": path.resolve(__dirname, "../shared"),
-    "@game": path.resolve(__dirname, "../src/game"),
+    "@shared": path.resolve(process.cwd(), "../shared"),
+    "~game": path.resolve(process.cwd(), "../src/game"),
     // Stub out the Vite-only share module (uses import.meta.env) so the
     // HUD import chain doesn't break the Remotion webpack build.
-    [path.resolve(__dirname, "../src/share")]: path.resolve(
-      __dirname,
+    [path.resolve(process.cwd(), "../src/share")]: path.resolve(
+      process.cwd(),
       "src/share-stub.ts",
     ),
   };

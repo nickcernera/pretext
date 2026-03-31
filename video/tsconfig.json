@@ -11,7 +11,7 @@
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["../shared/*"],
-      "@game/*": ["../src/game/*"]
+      "~game/*": ["../src/game/*"]
     }
   },
   "include": ["src"],

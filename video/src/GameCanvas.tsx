@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
-import { Renderer } from "@game/renderer";
+import { Renderer } from "~game/renderer";
 import { NoopHUD } from "./NoopHUD";
 import { Simulation } from "./Simulation";
 
