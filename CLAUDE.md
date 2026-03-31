@@ -61,6 +61,6 @@ shared/
 
 ## Known Stubs
 
-- `split` and `eject` WebSocket messages are defined in protocol but server handlers are no-ops
+- `eject` WebSocket message is defined in protocol but server handler is a no-op
 - No touch/mobile input beyond basic pointer events
 - State broadcast sends full pellet array every tick (needs delta compression for scale)

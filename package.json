@@ -1,7 +1,15 @@
 {
-  "name": "pretext-game",
+  "name": "pretext-arena",
   "private": true,
   "type": "module",
+  "description": "Multiplayer text arena built with @chenglou/pretext",
+  "author": "Nick Cernera",
+  "license": "MIT",
+  "homepage": "https://pretextarena.io",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nickcernera/pretext-arena"
+  },
   "scripts": {
     "dev": "vite",
     "dev:server": "bun --watch server/index.ts",
