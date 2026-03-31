@@ -9,7 +9,9 @@
     "test": "bun test server/__tests__"
   },
   "dependencies": {
-    "@chenglou/pretext": "0.0.3"
+    "@chenglou/pretext": "0.0.3",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0"
   },
   "devDependencies": {
     "typescript": "^5.9.0",

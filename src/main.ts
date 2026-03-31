@@ -1,4 +1,9 @@
+import { inject as injectAnalytics } from '@vercel/analytics'
+import { injectSpeedInsights } from '@vercel/speed-insights'
 import { setLocale, clearCache } from '@chenglou/pretext'
+
+injectAnalytics()
+injectSpeedInsights()
 import { LandingScreen } from './screens/landing'
 import { DeathScreen } from './screens/death'
 import { GameScreen } from './screens/game'
