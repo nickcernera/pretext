@@ -6,6 +6,7 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
+    "@chenglou/pretext": "^0.0.3",
     "@remotion/cli": "4.0.443",
     "@remotion/google-fonts": "^4.0.443",
     "@remotion/tailwind-v4": "4.0.443",

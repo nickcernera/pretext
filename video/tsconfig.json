@@ -1,15 +1,19 @@
 {
   "compilerOptions": {
-    "target": "ES2018",
-    "module": "commonjs",
+    "target": "ES2022",
+    "module": "ES2020",
+    "lib": ["ES2023", "DOM"],
     "jsx": "react-jsx",
+    "moduleResolution": "bundler",
     "strict": true,
     "noEmit": true,
-    "lib": ["es2015"],
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "noUnusedLocals": true
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["../shared/*"],
+      "@game/*": ["../src/game/*"]
+    }
   },
-  "exclude": ["remotion.config.ts"]
+  "include": ["src"],
+  "exclude": ["node_modules"]
 }
