@@ -3,8 +3,24 @@ import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { Renderer } from "~game/renderer";
 import { NoopHUD } from "./NoopHUD";
 import { Simulation } from "./Simulation";
+import { createRng } from "./seededRandom";
 import type { ActConfig } from "./ActConfig";
 import type { PlayerState, PelletState } from "@shared/protocol";
+
+/**
+ * Temporarily replace Math.random with a seeded PRNG so that
+ * the game's rain corpus (which calls Math.random internally)
+ * is deterministic across Remotion's parallel render workers.
+ */
+function withSeededRandom<T>(seed: number, fn: () => T): T {
+  const original = Math.random;
+  Math.random = createRng(seed);
+  try {
+    return fn();
+  } finally {
+    Math.random = original;
+  }
+}
 
 type FrameSnapshot = {
   players: PlayerState[];
@@ -68,14 +84,21 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
   );
 
   useEffect(() => {
-    const renderer = new Renderer();
-    (renderer as any).hud = new NoopHUD();
-    renderer.init(width, height);
-    const handles = [
-      config.playerHandle,
-      ...config.bots.map((b) => b.handle),
-    ];
-    renderer.rain.setHandles(handles);
+    // Seed Math.random during renderer creation so the rain corpus
+    // is identical across Remotion's parallel render workers
+    const renderer = withSeededRandom(config.seed, () => {
+      const r = new Renderer();
+      (r as any).hud = new NoopHUD();
+      r.init(width, height);
+      const handles = [
+        config.playerHandle,
+        ...config.bots.map((b) => b.handle),
+      ];
+      r.rain.setHandles(handles);
+      // Force corpus rebuild while Math.random is seeded
+      (r.rain as any).update(0.016);
+      return r;
+    });
 
     if (config.cameraZoom) {
       const zoom = config.cameraZoom;
