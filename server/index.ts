@@ -38,6 +38,14 @@ if (process.env.NODE_ENV !== 'production') {
   ALLOWED_ORIGINS.add('http://localhost:4173')
 }
 
+/** Check if an origin is allowed (exact match or Vercel preview subdomain) */
+function isOriginAllowed(origin: string): boolean {
+  if (ALLOWED_ORIGINS.has(origin)) return true
+  // Allow Vercel preview deployments: https://<slug>-nickcerneras-projects.vercel.app
+  if (/^https:\/\/pretext-[a-z0-9]+-nickcerneras-projects\.vercel\.app$/.test(origin)) return true
+  return false
+}
+
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
@@ -51,7 +59,7 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Stats-Key',
     'Vary': 'Origin',
   }
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
+  if (origin && isOriginAllowed(origin)) {
     headers['Access-Control-Allow-Origin'] = origin
   }
   return headers
@@ -205,7 +213,7 @@ const server = Bun.serve<WsData>({
         return new Response('Too many connections', { status: 429 })
       }
       const wsOrigin = req.headers.get('origin')
-      if (wsOrigin && !ALLOWED_ORIGINS.has(wsOrigin)) {
+      if (wsOrigin && !isOriginAllowed(wsOrigin)) {
         return new Response('Origin not allowed', { status: 403 })
       }
       const upgraded = server.upgrade(req, {
