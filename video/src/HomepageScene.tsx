@@ -81,9 +81,9 @@ export const HomepageScene: React.FC = () => {
     const prepared = prepareWithSegments(SEA_CORPUS, font);
     let cursor = { segmentIndex: 0, graphemeIndex: 0 };
 
-    // Panel exclusion zone — match the actual DOM content area
-    const panelW = 440;
-    const panelH = 240;
+    // Panel exclusion zone — match the padded DOM panel
+    const panelW = 560;
+    const panelH = 320;
     const panelX = (width - panelW) / 2;
     const panelY = (height - panelH) / 2;
 
@@ -133,13 +133,10 @@ export const HomepageScene: React.FC = () => {
         // Opacity: base + halo near panel + spotlight near cursor
         let alpha = 0.08;
 
-        // Panel halo
-        const closestPanelX = Math.max(panelX, Math.min(panelX + panelW, (span.left + span.right) / 2));
-        const closestPanelY = Math.max(panelY, Math.min(panelY + panelH, midY));
-        const panelDist = Math.sqrt(
-          ((span.left + span.right) / 2 - closestPanelX) ** 2 +
-          (midY - closestPanelY) ** 2
-        );
+        // Panel halo — edge-to-edge distance (matches real landing page)
+        const dx = Math.max(0, panelX - span.right, span.left - (panelX + panelW));
+        const dy = Math.max(0, panelY - lineBottom, lineTop - (panelY + panelH));
+        const panelDist = Math.sqrt(dx * dx + dy * dy);
         if (panelDist < 200) {
           alpha = Math.max(alpha, 0.08 + (1 - panelDist / 200) * 0.22);
         }
@@ -193,7 +190,7 @@ export const HomepageScene: React.FC = () => {
         style={{ width: "100%", height: "100%", position: "absolute" }}
       />
 
-      {/* Center panel */}
+      {/* Center panel with dark background (matches real landing page) */}
       <AbsoluteFill
         style={{
           justifyContent: "center",
@@ -207,6 +204,9 @@ export const HomepageScene: React.FC = () => {
             flexDirection: "column",
             alignItems: "center",
             gap: 18,
+            padding: "40px 60px",
+            borderRadius: 16,
+            background: "radial-gradient(ellipse at center, rgba(5, 10, 8, 0.95) 0%, rgba(5, 10, 8, 0.8) 60%, transparent 100%)",
           }}
         >
           <div

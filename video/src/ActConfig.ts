@@ -41,7 +41,7 @@ export const ACT_1: ActConfig = {
   playerHandle: "@cerneradesign",
   playerMass: 200,
   playerStart: { x: 2000, y: 2000 },
-  cameraZoom: 0.8, // tight zoom for spawn scene
+  cameraZoom: 1.4, // tighter than live game (live game maxes at 1.2)
   waypoints: [
     { x: 2000, y: 2000 },
     { x: 2150, y: 1900 },
@@ -66,7 +66,7 @@ export const ACT_2: ActConfig = {
   playerMass: 300,
   playerStart: { x: 2000, y: 2000 },
   playerTexts: "@cerneradesign async void malloc grep",
-  cameraZoom: 0.6, // medium zoom — both blobs visible and large
+  cameraZoom: 1.1, // tight — both blobs big on screen
   waypoints: [
     { x: 2000, y: 2000 },
     { x: 1850, y: 1850 }, // flee
@@ -91,7 +91,7 @@ export const ACT_3: ActConfig = {
   playerMass: 2000, // massive — dominates the screen
   playerStart: { x: 2000, y: 2000 },
   playerTexts: "@cerneradesign @kernelpanic async void malloc grep fork exec sudo tensor epoch batch dropout",
-  cameraZoom: 0.5, // zoomed in — blob fills ~40% of screen, world boundary stays offscreen
+  cameraZoom: 0.9, // tight — massive blob fills screen
   waypoints: [
     { x: 2000, y: 2000 },
     { x: 2080, y: 2000 },
