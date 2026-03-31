@@ -126,6 +126,7 @@ export class GameScreen {
   private interpolator: StateInterpolator | null = null
   private onlinePlayers: PlayerState[] = []
   private onlinePellets: PelletState[] = []
+  private lastInputSend = 0
 
   // Spectate mode
   private spectating = false
@@ -811,7 +812,12 @@ export class GameScreen {
     this.input.worldX = worldCursor.x
     this.input.worldY = worldCursor.y
 
-    this.client?.sendInput(this.input.worldX, this.input.worldY)
+    // Throttle input to server tick rate (~30Hz) to avoid tripping rate limiter on high-refresh displays
+    const now = performance.now()
+    if (now - this.lastInputSend >= 1000 / TICK_RATE) {
+      this.lastInputSend = now
+      this.client?.sendInput(this.input.worldX, this.input.worldY)
+    }
 
     if (this.input.consumeSplit()) {
       const localPlayer = this.onlinePlayers.find(p => p.id === this.playerId)
