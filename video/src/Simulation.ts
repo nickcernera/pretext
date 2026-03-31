@@ -128,6 +128,12 @@ export class Simulation {
 
   runToFrame(frame: number, fps: number): void {
     for (let i = 0; i < frame; i++) {
+      // Capture player position before the last step (for camera smoothing)
+      if (i === frame - 2) {
+        const ps = this.toPS(this.player);
+        this.prevPlayerPos = { x: ps.x, y: ps.y };
+      }
+
       let speedMul = 1;
       if (this.config.slowMoRange) {
         const [start, end] = this.config.slowMoRange;
@@ -156,6 +162,13 @@ export class Simulation {
   getLocalPlayerId(): string {
     return "player";
   }
+
+  /** Get previous frame's player COM (captured during runToFrame). */
+  getPrevPlayerPos(): { x: number; y: number } | null {
+    return this.prevPlayerPos;
+  }
+
+  private prevPlayerPos: { x: number; y: number } | null = null;
 
   private splitPlayer(): void {
     const p = this.player;

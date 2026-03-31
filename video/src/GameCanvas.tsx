@@ -48,20 +48,9 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
     const sim = Simulation.fromConfig(config);
     sim.runToFrame(frame, fps);
 
-    // Also simulate previous frame for camera smoothing
-    let prevPlayerX: number | null = null;
-    let prevPlayerY: number | null = null;
-    if (frame > 0) {
-      const prevSim = Simulation.fromConfig(config);
-      prevSim.runToFrame(frame - 1, fps);
-      const prevPlayer = prevSim.getPlayers().find((p) => p.id === "player");
-      if (prevPlayer) {
-        prevPlayerX = prevPlayer.x;
-        prevPlayerY = prevPlayer.y;
-      }
-    }
-
     const players = sim.getPlayers();
+    // Previous frame's player position (captured during runToFrame, no extra sim needed)
+    const prevPos = sim.getPrevPlayerPos();
     const pellets = sim.getPellets();
     const playerTexts = sim.getPlayerTexts();
 
@@ -78,12 +67,12 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
 
       // Smooth camera: lerp between previous and current COM to avoid
       // jarring jumps when split shifts the center-of-mass
-      const CAMERA_SMOOTH = 0.3; // 0 = snap, 1 = fully smoothed (stuck on prev)
+      const CAMERA_SMOOTH = 0.3;
       let camX = localPlayer.x;
       let camY = localPlayer.y;
-      if (prevPlayerX !== null && prevPlayerY !== null) {
-        camX = prevPlayerX + (localPlayer.x - prevPlayerX) * (1 - CAMERA_SMOOTH);
-        camY = prevPlayerY + (localPlayer.y - prevPlayerY) * (1 - CAMERA_SMOOTH);
+      if (prevPos) {
+        camX = prevPos.x + (localPlayer.x - prevPos.x) * (1 - CAMERA_SMOOTH);
+        camY = prevPos.y + (localPlayer.y - prevPos.y) * (1 - CAMERA_SMOOTH);
       }
 
       renderer.camera.x = camX - width / 2;
