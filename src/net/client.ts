@@ -20,6 +20,7 @@ export class GameClient {
   private events: GameEvents
   private serverUrl = ''
   private intentionalClose = false
+  private everConnected = false
 
   // Reconnection state
   private reconnectAttempts = 0
@@ -35,7 +36,7 @@ export class GameClient {
     this.intentionalClose = false
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(serverUrl)
-      this.ws.onopen = () => resolve()
+      this.ws.onopen = () => { this.everConnected = true; resolve() }
       this.ws.onerror = (e) => reject(e)
       this.ws.onmessage = (e) => {
         try {
@@ -53,9 +54,10 @@ export class GameClient {
       this.ws.onclose = () => {
         if (this.intentionalClose) {
           this.events.onDisconnect()
-        } else {
+        } else if (this.everConnected) {
           this.startReconnect()
         }
+        // If never connected, the onerror reject already handled it — don't reconnect
       }
     })
   }
@@ -78,10 +80,12 @@ export class GameClient {
 
   disconnect() {
     this.intentionalClose = true
+    this.everConnected = false
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout)
       this.reconnectTimeout = null
     }
+    this.reconnectAttempts = 0
     this.ws?.close()
     this.ws = null
   }
