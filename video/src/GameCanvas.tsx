@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useRef } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { Renderer } from "~game/renderer";
+import { pruneStaleBlobs } from "~game/blob";
 import { NoopHUD } from "./NoopHUD";
 import { Simulation } from "./Simulation";
 import { createRng } from "./seededRandom";
 import type { ActConfig } from "./ActConfig";
 import type { PlayerState, PelletState } from "@shared/protocol";
 
-/**
- * Temporarily replace Math.random with a seeded PRNG so that
- * the game's rain corpus (which calls Math.random internally)
- * is deterministic across Remotion's parallel render workers.
- */
+// ---------------------------------------------------------------------------
+// Determinism helpers — the game renderer uses performance.now(), Math.random(),
+// and module-scope Maps that break Remotion's parallel multi-tab rendering.
+// We patch all of them during draw so the output is a pure function of frame #.
+// ---------------------------------------------------------------------------
+
+/** Temporarily replace Math.random with a seeded PRNG. */
 function withSeededRandom<T>(seed: number, fn: () => T): T {
   const original = Math.random;
   Math.random = createRng(seed);
@@ -20,6 +23,37 @@ function withSeededRandom<T>(seed: number, fn: () => T): T {
   } finally {
     Math.random = original;
   }
+}
+
+/**
+ * Patch performance.now AND Math.random during a callback.
+ * This ensures blob wobble, camera shake, spasm effects, and rain kill flashes
+ * all produce deterministic output keyed to the frame-based timestamp.
+ */
+function withDeterministicEnv<T>(frameTimeMs: number, seed: number, fn: () => T): T {
+  const origPerfNow = performance.now;
+  const origRandom = Math.random;
+  // Freeze performance.now to the frame timestamp
+  performance.now = () => frameTimeMs;
+  // Seed Math.random for camera shake and any other stray calls
+  Math.random = createRng(seed);
+  try {
+    return fn();
+  } finally {
+    performance.now = origPerfNow;
+    Math.random = origRandom;
+  }
+}
+
+/**
+ * Clear module-scope mutable Maps in blob.ts that accumulate state
+ * across frames. In Remotion's parallel rendering, frames execute
+ * out of order so accumulated physics/cache state is wrong.
+ * pruneStaleBlobs(activeIds) removes entries not in the set —
+ * passing empty set clears everything.
+ */
+function clearBlobState() {
+  pruneStaleBlobs(new Set());
 }
 
 type FrameSnapshot = {
@@ -31,7 +65,7 @@ type FrameSnapshot = {
 
 /**
  * Pre-simulate all frames for an act and cache the results.
- * This runs once per act config and eliminates O(N) re-simulation per frame.
+ * Runs once per act config — each frame render is an O(1) lookup.
  */
 function preSimulate(config: ActConfig, totalFrames: number, fps: number): FrameSnapshot[] {
   const snapshots: FrameSnapshot[] = [];
@@ -40,7 +74,6 @@ function preSimulate(config: ActConfig, totalFrames: number, fps: number): Frame
   let prevPos: { x: number; y: number } | null = null;
 
   for (let i = 0; i <= totalFrames; i++) {
-    // Capture current state BEFORE stepping (frame 0 = initial state)
     const ps = sim.getPlayers();
     const localP = ps.find((p) => p.id === "player");
 
@@ -51,12 +84,10 @@ function preSimulate(config: ActConfig, totalFrames: number, fps: number): Frame
       prevPlayerPos: prevPos,
     });
 
-    // Save current position for next frame's prevPlayerPos
     if (localP) {
       prevPos = { x: localP.x, y: localP.y };
     }
 
-    // Step to next frame
     let speedMul = 1;
     if (config.slowMoRange) {
       const [start, end] = config.slowMoRange;
@@ -79,7 +110,7 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
 
   // Pre-simulate all frames once (memoized by config reference)
   const snapshots = useMemo(
-    () => preSimulate(config, 120, fps), // 120 frames max per act (~4s at 30fps)
+    () => preSimulate(config, 120, fps),
     [config, fps],
   );
 
@@ -122,7 +153,6 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // O(1) lookup — no simulation work per frame
     const snap = snapshots[Math.min(frame, snapshots.length - 1)];
 
     renderer.pellets.setPellets(snap.pellets);
@@ -151,8 +181,22 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
       (renderer.camera as any).targetY = renderer.camera.y;
     }
 
+    // Frame-based timestamp (deterministic, not wall-clock)
     const now = (frame / fps) * 1000;
-    renderer.draw(ctx, width, height, snap.players, "player", snap.playerTexts, now);
+
+    // Fix #3: Set lastTime so renderer computes dt = 1/fps (not a huge jump)
+    (renderer as any).lastTime = now - (1000 / fps);
+
+    // Fix #4: Clear blob physics/spasm/cache maps to prevent stale
+    // cross-frame state (frames render out of order in parallel mode)
+    clearBlobState();
+
+    // Fix #1 & #2 & camera shake: Freeze performance.now() to frame timestamp
+    // and seed Math.random during the entire draw call. This makes blob wobble,
+    // spasm effects, camera shake offsets, and rain kill flashes all deterministic.
+    withDeterministicEnv(now, config.seed + frame, () => {
+      renderer.draw(ctx, width, height, snap.players, "player", snap.playerTexts, now);
+    });
   }, [frame, fps, width, height, config, snapshots]);
 
   return (
