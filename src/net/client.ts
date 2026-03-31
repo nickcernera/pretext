@@ -42,7 +42,13 @@ export class GameClient {
         try {
           const msg = JSON.parse(e.data) as ServerMessage
           switch (msg.t) {
-            case 'joined': this.events.onJoined(msg.room, msg.playerId, msg.world); break
+            case 'joined':
+              // Only reset reconnect counter once we're fully accepted by the server.
+              // Resetting on WebSocket open allows an infinite loop if the server
+              // keeps accepting TCP but closing shortly after.
+              this.reconnectAttempts = 0
+              this.events.onJoined(msg.room, msg.playerId, msg.world)
+              break
             case 'state': this.events.onState(msg.players, msg.pellets, msg.pAdd, msg.pRem); break
             case 'kill': this.events.onKill(msg.killerId, msg.victimId, msg.killerHandle, msg.victimHandle); break
             case 'died': this.events.onDied(msg.stats); break
@@ -102,8 +108,10 @@ export class GameClient {
     this.reconnectTimeout = setTimeout(async () => {
       try {
         await this.connect(this.serverUrl)
-        // Reconnect succeeded
-        this.reconnectAttempts = 0
+        // WebSocket is open — notify UI, but don't reset reconnectAttempts yet.
+        // The counter resets when we receive a 'joined' message, proving
+        // the server accepted us. This prevents infinite reconnect loops
+        // when the server accepts TCP but immediately closes.
         this.events.onReconnected?.()
         // Re-join the room
         if (this.pendingJoin) {

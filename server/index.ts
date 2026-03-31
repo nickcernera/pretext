@@ -41,9 +41,8 @@ if (process.env.NODE_ENV !== 'production') {
 /** Check if an origin is allowed (exact match or Vercel preview subdomain) */
 function isOriginAllowed(origin: string): boolean {
   if (ALLOWED_ORIGINS.has(origin)) return true
-  // Allow Vercel preview deployments
-  const previewPattern = process.env.VERCEL_PREVIEW_PATTERN || 'nickcerneras-projects'
-  if (new RegExp(`^https:\\/\\/pretext-[a-z0-9]+-${previewPattern}\\.vercel\\.app$`).test(origin)) return true
+  // Allow Vercel preview deployments: https://<slug>-nickcerneras-projects.vercel.app
+  if (/^https:\/\/pretext-[a-z0-9]+-nickcerneras-projects\.vercel\.app$/.test(origin)) return true
   return false
 }
 
@@ -101,7 +100,7 @@ function sanitizeRoomCode(raw: string): string {
 const server = Bun.serve<WsData>({
   port: PORT,
 
-  async fetch(req, server) {
+  fetch(req, server) {
     const url = new URL(req.url)
     const origin = req.headers.get('origin')
 
@@ -129,13 +128,8 @@ const server = Bun.serve<WsData>({
       )
       const result: Record<string, unknown> = stats.getPublicStats(livePlayers)
       const statsKey = req.headers.get('x-stats-key')
-      const { timingSafeEqual } = await import('crypto')
-      if (statsKey && process.env.STATS_API_KEY) {
-        const a = Buffer.from(statsKey)
-        const b = Buffer.from(process.env.STATS_API_KEY)
-        if (a.length === b.length && timingSafeEqual(a, b)) {
-          result.health = stats.getHealthStats()
-        }
+      if (statsKey && process.env.STATS_API_KEY && statsKey === process.env.STATS_API_KEY) {
+        result.health = stats.getHealthStats()
       }
       return corsResponse(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' },
