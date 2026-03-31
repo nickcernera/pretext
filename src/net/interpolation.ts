@@ -34,7 +34,7 @@ export class StateInterpolator {
           id: sp.id,
           handle: sp.handle,
           color: sp.color,
-          avatar: sp.avatar,
+          avatar: sp.avatar ?? '',
           cells: new Map(),
         }
         this.players.set(sp.id, existing)
@@ -42,7 +42,7 @@ export class StateInterpolator {
 
       existing.handle = sp.handle
       existing.color = sp.color
-      existing.avatar = sp.avatar
+      existing.avatar = sp.avatar ?? ''
 
       // Update cell targets
       const seenCells = new Set<number>()

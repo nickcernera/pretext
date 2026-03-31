@@ -61,10 +61,14 @@ export function playerCenterOfMass(p: ServerPlayer): { x: number; y: number } {
 export type WsData = {
   playerId: string
   roomCode: string
+  msgCount: number
+  msgWindowStart: number
+  lastJoinAt: number
 }
 
 export class Room {
   code: string
+  isPublic: boolean
   players: Map<string, ServerPlayer> = new Map()
   spectators: Set<ServerWebSocket<WsData>> = new Set()
   pellets: PelletState[] = []
@@ -72,8 +76,9 @@ export class Room {
   private lastSnapshotAt = 0
   private nextPelletWord = createPelletBag()
 
-  constructor(code: string) {
+  constructor(code: string, isPublic = false) {
     this.code = code
+    this.isPublic = isPublic
     this.spawnInitialPellets()
   }
 
@@ -85,13 +90,32 @@ export class Room {
 
   private static readonly MIN_PELLET_DIST = 120
 
+  /** Spawn radius around a player for biased pellet placement */
+  private static readonly SPAWN_RADIUS = 800
+
   spawnPellet(): PelletState {
     const word = this.nextPelletWord()
     let x: number, y: number
     let attempts = 0
+
+    // 50% chance to spawn near a random player (if any exist)
+    const players = Array.from(this.players.values())
+    const nearPlayer = players.length > 0 && Math.random() < 0.5
+      ? players[Math.floor(Math.random() * players.length)]
+      : null
+
     do {
-      x = Math.random() * WORLD_W
-      y = Math.random() * WORLD_H
+      if (nearPlayer) {
+        // Spawn within SPAWN_RADIUS of the chosen player, clamped to world
+        const angle = Math.random() * Math.PI * 2
+        const dist = Math.random() * Room.SPAWN_RADIUS
+        const cell = nearPlayer.cells[0]
+        x = Math.max(0, Math.min(WORLD_W, cell.x + Math.cos(angle) * dist))
+        y = Math.max(0, Math.min(WORLD_H, cell.y + Math.sin(angle) * dist))
+      } else {
+        x = Math.random() * WORLD_W
+        y = Math.random() * WORLD_H
+      }
       attempts++
     } while (attempts < 20 && this.pellets.some(p => {
       const dx = p.x - x, dy = p.y - y
@@ -230,23 +254,25 @@ export class RoomManager {
     let room = this.rooms.get(code)
     if (!room) {
       if (this.rooms.size >= MAX_ROOMS) return null
-      room = new Room(code)
+      room = new Room(code, false)
       this.rooms.set(code, room)
     }
     return room
   }
 
   getPublicRoom(): Room | null {
-    // Find a room with space that isn't a private code
+    // Only consider rooms explicitly marked as public
     for (const room of this.rooms.values()) {
-      if (room.playerCount() < ROOM_CAPACITY) {
+      if (room.isPublic && room.playerCount() < ROOM_CAPACITY) {
         return room
       }
     }
     // Create a new public room with random code
     if (this.rooms.size >= MAX_ROOMS) return null
     const code = Math.random().toString(36).substring(2, 8)
-    return this.getOrCreateRoom(code)
+    const room = new Room(code, true)
+    this.rooms.set(code, room)
+    return room
   }
 
   roomCount(): number {

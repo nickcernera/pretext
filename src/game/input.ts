@@ -6,21 +6,38 @@ export class Input {
   splitPressed = false
   ejectPressed = false
 
+  private canvas: HTMLCanvasElement
+  private onPointerMove: (e: PointerEvent) => void
+  private onPointerDown: (e: PointerEvent) => void
+  private onKeyDown: (e: KeyboardEvent) => void
+
   constructor(canvas: HTMLCanvasElement) {
-    canvas.addEventListener('pointermove', (e) => {
+    this.canvas = canvas
+
+    this.onPointerMove = (e) => {
       this.screenX = e.clientX
       this.screenY = e.clientY
-    })
+    }
 
-    canvas.addEventListener('pointerdown', (e) => {
+    this.onPointerDown = (e) => {
       this.screenX = e.clientX
       this.screenY = e.clientY
-    })
+    }
 
-    window.addEventListener('keydown', (e) => {
+    this.onKeyDown = (e) => {
       if (e.code === 'Space') { this.splitPressed = true; e.preventDefault() }
       if (e.code === 'KeyW') this.ejectPressed = true
-    })
+    }
+
+    canvas.addEventListener('pointermove', this.onPointerMove)
+    canvas.addEventListener('pointerdown', this.onPointerDown)
+    window.addEventListener('keydown', this.onKeyDown)
+  }
+
+  destroy() {
+    this.canvas.removeEventListener('pointermove', this.onPointerMove)
+    this.canvas.removeEventListener('pointerdown', this.onPointerDown)
+    window.removeEventListener('keydown', this.onKeyDown)
   }
 
   consumeSplit(): boolean {

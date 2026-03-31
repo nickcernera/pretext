@@ -64,7 +64,8 @@ export function splitPlayer(player: ServerPlayer, now: number) {
 }
 
 export class Simulation {
-  private interval: ReturnType<typeof setInterval> | null = null
+  private timeout: ReturnType<typeof setTimeout> | null = null
+  private lastTickTime = 0
   private roomManager: RoomManager
   private stats: StatsTracker
   private lastPelletIds = new Map<string, Set<number>>() // roomCode → pellet IDs last broadcast
@@ -75,9 +76,13 @@ export class Simulation {
   }
 
   start() {
-    this.interval = setInterval(() => {
-      const tickStart = performance.now()
-      const dt = TICK_MS / 1000
+    const tick = () => {
+      const now = performance.now()
+      const realDt = this.lastTickTime ? (now - this.lastTickTime) / 1000 : TICK_MS / 1000
+      this.lastTickTime = now
+      const dt = Math.min(realDt, TICK_MS * 3 / 1000) // cap at 3x to prevent death spiral
+
+      const tickStart = now
       const rooms = this.roomManager.allRooms()
       this.stats.roomCount = rooms.length
       for (const room of rooms) {
@@ -96,14 +101,21 @@ export class Simulation {
         }
       }
       this.stats.onTick(performance.now() - tickStart)
-    }, TICK_MS)
+
+      // Self-correcting: schedule next tick relative to target cadence
+      const elapsed = performance.now() - now
+      const nextDelay = Math.max(1, TICK_MS - elapsed)
+      this.timeout = setTimeout(tick, nextDelay)
+    }
+    this.timeout = setTimeout(tick, TICK_MS)
   }
 
   stop() {
-    if (this.interval) {
-      clearInterval(this.interval)
-      this.interval = null
+    if (this.timeout) {
+      clearTimeout(this.timeout)
+      this.timeout = null
     }
+    this.lastTickTime = 0
   }
 
   tickRoom(room: Room, dt: number) {

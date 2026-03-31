@@ -3,7 +3,7 @@ import { Room, RoomManager, playerTotalMass } from '../room'
 
 describe('Room', () => {
   test('addPlayer and removePlayer', () => {
-    const room = new Room('test-room')
+    const room = new Room('test-room', true)
     const player = room.addPlayer('p1', '@alice', null)
     expect(player.id).toBe('p1')
     expect(player.handle).toBe('@alice')
@@ -15,7 +15,7 @@ describe('Room', () => {
   })
 
   test('getLeaderboard sorts by mass', () => {
-    const room = new Room('lb-room')
+    const room = new Room('lb-room', true)
     const p1 = room.addPlayer('p1', '@alice', null)
     const p2 = room.addPlayer('p2', '@bob', null)
     p1.cells[0].mass = 200
@@ -27,7 +27,7 @@ describe('Room', () => {
   })
 
   test('respawnPellets fills deficit', () => {
-    const room = new Room('pellet-room')
+    const room = new Room('pellet-room', true)
     const initialCount = room.pellets.length
     expect(initialCount).toBe(150)
 

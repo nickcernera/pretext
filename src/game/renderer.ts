@@ -7,6 +7,9 @@ import { HUD } from './hud'
 import { massToRadius, type PlayerState, type CellState } from '@shared/protocol'
 import { WORLD_W, WORLD_H, RAIN_COLOR, GRID_LINE_SPACING } from '@shared/constants'
 
+// Reusable pool for blob holes — avoids per-frame array allocation
+const blobHolesPool: { x: number; y: number; radius: number }[] = []
+
 export class Renderer {
   readonly rain = new MatrixRain()
   readonly pellets = new PelletRenderer()
@@ -64,14 +67,22 @@ export class Renderer {
     drawBackground(ctx, screenW, screenH)
 
     // 3. Set world-space exclusions for rain — include all cells
-    const blobHoles: { x: number; y: number; radius: number }[] = []
+    let holeIdx = 0
     for (const p of players) {
       for (const c of p.cells) {
-        blobHoles.push({ x: c.x, y: c.y, radius: massToRadius(c.mass) })
+        if (holeIdx < blobHolesPool.length) {
+          blobHolesPool[holeIdx].x = c.x
+          blobHolesPool[holeIdx].y = c.y
+          blobHolesPool[holeIdx].radius = massToRadius(c.mass)
+        } else {
+          blobHolesPool.push({ x: c.x, y: c.y, radius: massToRadius(c.mass) })
+        }
+        holeIdx++
       }
     }
+    blobHolesPool.length = holeIdx
     const wordRects = this.pellets.getRects()
-    this.rain.setBlobHoles(blobHoles)
+    this.rain.setBlobHoles(blobHolesPool)
     this.rain.setWordRects(wordRects)
     this.rain.update(dt)
 

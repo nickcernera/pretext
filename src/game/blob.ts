@@ -29,6 +29,26 @@ export function triggerSpasm(blobId: string) {
   spasmMap.set(blobId, performance.now() + 300) // 300ms spasm
 }
 
+/** Remove physics/cache entries for players no longer in the game */
+export function pruneStaleBlobs(activeIds: Set<string>) {
+  for (const key of blobPhysics.keys()) {
+    const playerId = key.split(':')[0]
+    if (!activeIds.has(playerId)) blobPhysics.delete(key)
+  }
+  for (const key of spasmMap.keys()) {
+    const playerId = key.split(':')[0]
+    if (!activeIds.has(playerId)) spasmMap.delete(key)
+  }
+  for (const key of blobTextParsed.keys()) {
+    const playerId = key.split(':')[0]
+    if (!activeIds.has(playerId)) blobTextParsed.delete(key)
+  }
+  for (const key of fontSizeCache.keys()) {
+    const playerId = key.split(':')[0]
+    if (!activeIds.has(playerId)) fontSizeCache.delete(key)
+  }
+}
+
 // --- Types ---
 type Obstacle = { cx: number; cy: number; radius: number }
 

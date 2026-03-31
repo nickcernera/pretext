@@ -8,17 +8,31 @@ export type GameEvents = {
   onLeaderboard: (entries: LeaderboardEntry[], isSnapshot: boolean) => void
   onError: (msg: string) => void
   onDisconnect: () => void
+  onReconnecting?: (attempt: number, maxAttempts: number) => void
+  onReconnected?: () => void
+  onReconnectFailed?: () => void
 }
+
+const MAX_RECONNECT_ATTEMPTS = 5
 
 export class GameClient {
   private ws: WebSocket | null = null
   private events: GameEvents
+  private serverUrl = ''
+  private intentionalClose = false
+
+  // Reconnection state
+  private reconnectAttempts = 0
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+  private pendingJoin: { room: string | null; token?: string; guest?: string; avatar?: string } | null = null
 
   constructor(events: GameEvents) {
     this.events = events
   }
 
   connect(serverUrl: string): Promise<void> {
+    this.serverUrl = serverUrl
+    this.intentionalClose = false
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(serverUrl)
       this.ws.onopen = () => resolve()
@@ -36,11 +50,18 @@ export class GameClient {
           }
         } catch { /* ignore malformed */ }
       }
-      this.ws.onclose = () => this.events.onDisconnect()
+      this.ws.onclose = () => {
+        if (this.intentionalClose) {
+          this.events.onDisconnect()
+        } else {
+          this.startReconnect()
+        }
+      }
     })
   }
 
   join(room: string | null, token?: string, guest?: string, avatar?: string) {
+    this.pendingJoin = { room, token, guest, avatar }
     this.send({ t: 'join', room: room || '', token, guest, avatar })
   }
 
@@ -56,8 +77,39 @@ export class GameClient {
   sendEject() { this.send({ t: 'eject' }) }
 
   disconnect() {
+    this.intentionalClose = true
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
     this.ws?.close()
     this.ws = null
+  }
+
+  private startReconnect() {
+    if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      this.events.onReconnectFailed?.()
+      return
+    }
+    this.reconnectAttempts++
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 16000)
+    this.events.onReconnecting?.(this.reconnectAttempts, MAX_RECONNECT_ATTEMPTS)
+
+    this.reconnectTimeout = setTimeout(async () => {
+      try {
+        await this.connect(this.serverUrl)
+        // Reconnect succeeded
+        this.reconnectAttempts = 0
+        this.events.onReconnected?.()
+        // Re-join the room
+        if (this.pendingJoin) {
+          const { room, token, guest, avatar } = this.pendingJoin
+          this.send({ t: 'join', room: room || '', token, guest, avatar })
+        }
+      } catch {
+        // connect() failed, onclose will fire and trigger another startReconnect()
+      }
+    }, delay)
   }
 
   private send(msg: ClientMessage) {

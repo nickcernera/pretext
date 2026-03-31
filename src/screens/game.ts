@@ -15,7 +15,7 @@ import {
   handleToColor, massToRadius, pelletRadius,
   type PlayerState, type PelletState, type CellState, type DeathStats, type LeaderboardEntry,
 } from '@shared/protocol'
-import { triggerSpasm } from '../game/blob'
+import { triggerSpasm, pruneStaleBlobs } from '../game/blob'
 import { createPelletBag } from '@shared/words'
 
 const BOT_HANDLES = [
@@ -97,6 +97,7 @@ function toPlayerState(p: LocalPlayer | Bot): PlayerState {
 
 export class GameScreen {
   onDeath: ((stats: DeathStats) => void) | null = null
+  onConnectionFailed: (() => void) | null = null
   roomCode: string | null = null
 
   private canvas: HTMLCanvasElement
@@ -137,6 +138,10 @@ export class GameScreen {
   private rafId = 0
   private running = false
   private lastTime = 0
+
+  // Overlay elements
+  private connectionErrorOverlay: HTMLDivElement | null = null
+  private reconnectOverlay: HTMLDivElement | null = null
 
   constructor(canvas: HTMLCanvasElement, handle: string, options?: GameOptions) {
     this.canvas = canvas
@@ -230,6 +235,13 @@ export class GameScreen {
         this.interpolator!.update(players)
         this.renderer.pellets.setPellets(resolvedPellets)
 
+        // Prune stale player data to prevent memory leaks
+        const activeIds = new Set(players.map(p => p.id))
+        for (const id of this.playerTexts.keys()) {
+          if (id !== this.playerId && !activeIds.has(id)) this.playerTexts.delete(id)
+        }
+        pruneStaleBlobs(activeIds)
+
         const handles = players.map(p => p.handle)
         this.renderer.rain.setHandles(handles)
       },
@@ -260,17 +272,39 @@ export class GameScreen {
         console.error('[GameClient] error:', msg)
       },
       onDisconnect: () => {
-        console.warn('[GameClient] disconnected')
-        if (!this.spectating) {
-          this.stop()
-          this.showConnectionError('Connection lost. Returning to lobby...')
-        }
+        console.warn('[GameClient] disconnected (intentional)')
+      },
+      onReconnecting: (attempt, maxAttempts) => {
+        console.warn(`[GameClient] reconnecting (${attempt}/${maxAttempts})`)
+        this.showReconnectOverlay(attempt, maxAttempts)
+      },
+      onReconnected: () => {
+        console.log('[GameClient] reconnected')
+        this.removeReconnectOverlay()
+      },
+      onReconnectFailed: () => {
+        console.error('[GameClient] reconnect failed after all attempts')
+        this.removeReconnectOverlay()
+        this.stop()
+        this.fireDeath({
+          handle: this.handle, timeAlive: 0, kills: 0,
+          peakMass: 0, victims: [], killedBy: '(disconnected)',
+        })
       },
     })
   }
 
   setOnDeath(cb: (stats: DeathStats) => void) {
     this.onDeath = cb
+  }
+
+  /** Fire onDeath exactly once — prevents duplicate death screens from race conditions */
+  private fireDeath(stats: DeathStats) {
+    if (this.onDeath) {
+      const cb = this.onDeath
+      this.onDeath = null
+      cb(stats)
+    }
   }
 
   async start() {
@@ -294,7 +328,7 @@ export class GameScreen {
         }
       } catch (e) {
         console.error('[GameClient] failed to connect:', e)
-        this.showConnectionError('Failed to connect to server. Returning to lobby...')
+        this.showConnectionError()
         return
       }
     } else {
@@ -317,27 +351,109 @@ export class GameScreen {
     }
     this.removeSpectateOverlay()
     this.removeSpectateKeyListener()
+    this.removeConnectionErrorOverlay()
+    this.removeReconnectOverlay()
+    this.input.destroy()
     this.renderer.hud.destroy()
   }
 
-  private showConnectionError(message: string) {
-    const toast = document.createElement('div')
-    toast.textContent = message
-    toast.style.cssText = `
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      font-family: "Space Mono", monospace; font-size: 14px; color: #ff4141;
-      background: rgba(10, 20, 14, 0.95); border: 1px solid #ff4141;
-      padding: 16px 24px; border-radius: 6px; z-index: 30;
+  private showConnectionError() {
+    this.removeConnectionErrorOverlay()
+    const overlay = document.createElement('div')
+    this.connectionErrorOverlay = overlay
+    overlay.style.cssText = `
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-family: "Space Mono", monospace; color: #00ff88;
     `
+
+    const msgBox = document.createElement('div')
+    msgBox.style.cssText = 'text-align: left; line-height: 1.8;'
+    const title = document.createElement('div')
+    title.style.cssText = 'font-size: 18px; font-weight: bold;'
+    title.textContent = '> CONNECTION FAILED'
+    const subtitle = document.createElement('div')
+    subtitle.style.cssText = 'font-size: 14px; opacity: 0.7;'
+    subtitle.textContent = '> could not reach game server.'
+    msgBox.append(title, subtitle)
+
+    const btnRow = document.createElement('div')
+    btnRow.style.cssText = 'margin-top: 28px; display: flex; gap: 16px;'
+    const btnStyle = `
+      font-family: "Space Mono", monospace; font-size: 14px;
+      color: #00ff88; background: transparent;
+      padding: 10px 28px; cursor: pointer; border-radius: 4px;
+    `
+    const retryBtn = document.createElement('button')
+    retryBtn.textContent = 'RETRY'
+    retryBtn.style.cssText = btnStyle + 'border: 1px solid #00ff88;'
+    retryBtn.addEventListener('click', () => {
+      this.removeConnectionErrorOverlay()
+      this.start()
+    })
+    const backBtn = document.createElement('button')
+    backBtn.textContent = 'BACK'
+    backBtn.style.cssText = btnStyle + 'border: 1px solid rgba(0, 255, 136, 0.3); opacity: 0.7;'
+    backBtn.addEventListener('click', () => {
+      this.removeConnectionErrorOverlay()
+      this.stop()
+      this.onConnectionFailed?.()
+    })
+    btnRow.append(retryBtn, backBtn)
+    overlay.append(msgBox, btnRow)
+
     const uiRoot = document.getElementById('ui-root') || document.body
-    uiRoot.appendChild(toast)
-    setTimeout(() => {
-      toast.remove()
-      this.onDeath?.({
-        handle: this.handle, timeAlive: 0, kills: 0,
-        peakMass: 0, victims: [], killedBy: '',
-      })
-    }, 2000)
+    uiRoot.appendChild(overlay)
+  }
+
+  private removeConnectionErrorOverlay() {
+    this.connectionErrorOverlay?.remove()
+    this.connectionErrorOverlay = null
+  }
+
+  // --- Reconnect overlay ---
+
+  private showReconnectOverlay(attempt: number, maxAttempts: number) {
+    this.removeReconnectOverlay()
+    const overlay = document.createElement('div')
+    this.reconnectOverlay = overlay
+    overlay.style.cssText = `
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-family: "Space Mono", monospace; color: #00ff88;
+    `
+    const line1 = document.createElement('div')
+    line1.style.cssText = 'font-size: 18px; font-weight: bold;'
+    line1.textContent = `> RECONNECTING...  (${attempt}/${maxAttempts})`
+    // Blinking cursor
+    const cursor = document.createElement('span')
+    cursor.textContent = '\u2588'
+    cursor.style.cssText = 'animation: blink 1s step-end infinite; margin-left: 4px;'
+    line1.appendChild(cursor)
+
+    const line2 = document.createElement('div')
+    line2.style.cssText = 'font-size: 14px; opacity: 0.6; margin-top: 12px;'
+    line2.textContent = 'signal lost. stand by.'
+
+    overlay.append(line1, line2)
+
+    // Inject blink keyframes if not already present
+    if (!document.getElementById('reconnect-blink-style')) {
+      const style = document.createElement('style')
+      style.id = 'reconnect-blink-style'
+      style.textContent = '@keyframes blink { 50% { opacity: 0; } }'
+      document.head.appendChild(style)
+    }
+
+    const uiRoot = document.getElementById('ui-root') || document.body
+    uiRoot.appendChild(overlay)
+  }
+
+  private removeReconnectOverlay() {
+    this.reconnectOverlay?.remove()
+    this.reconnectOverlay = null
   }
 
   // --- Spectate mode ---
@@ -468,8 +584,8 @@ export class GameScreen {
     this.removeSpectateOverlay()
     this.removeSpectateKeyListener()
     this.stop()
-    if (this.pendingDeathStats && this.onDeath) {
-      this.onDeath(this.pendingDeathStats)
+    if (this.pendingDeathStats) {
+      this.fireDeath(this.pendingDeathStats)
     }
   }
 
@@ -1015,9 +1131,7 @@ export class GameScreen {
       victims: this.victims,
       killedBy,
     }
-    if (this.onDeath) {
-      this.onDeath(stats)
-    }
+    this.fireDeath(stats)
   }
 
   private updateHUDLocal() {

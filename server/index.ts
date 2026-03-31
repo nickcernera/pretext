@@ -1,5 +1,5 @@
 import {
-  WORLD_W, WORLD_H,
+  WORLD_W, WORLD_H, ROOM_CAPACITY,
   MAX_HANDLE_LENGTH, MAX_AVATAR_LENGTH, MAX_ROOM_CODE_LENGTH,
   WS_MAX_PAYLOAD,
 } from '../shared/constants'
@@ -209,7 +209,7 @@ const server = Bun.serve<WsData>({
         return new Response('Origin not allowed', { status: 403 })
       }
       const upgraded = server.upgrade(req, {
-        data: { playerId: '', roomCode: '' },
+        data: { playerId: '', roomCode: '', msgCount: 0, msgWindowStart: 0, lastJoinAt: 0 },
       })
       if (upgraded) return undefined
       return new Response('WebSocket upgrade failed', { status: 400 })
@@ -227,6 +227,18 @@ const server = Bun.serve<WsData>({
     },
 
     message(ws, message) {
+      // Per-connection message rate limiting (60 msgs/sec)
+      const now = Date.now()
+      if (now - ws.data.msgWindowStart > 1000) {
+        ws.data.msgCount = 0
+        ws.data.msgWindowStart = now
+      }
+      ws.data.msgCount++
+      if (ws.data.msgCount > 60) {
+        ws.close(1008, 'Rate limit exceeded')
+        return
+      }
+
       let msg: ClientMessage
       try {
         msg = JSON.parse(String(message))
@@ -237,6 +249,13 @@ const server = Bun.serve<WsData>({
 
       switch (msg.t) {
         case 'join': {
+          // Join cooldown: 2 seconds between join attempts
+          if (now - ws.data.lastJoinAt < 2000) {
+            ws.send(JSON.stringify({ t: 'error', msg: 'Too fast' } satisfies ServerMessage))
+            break
+          }
+          ws.data.lastJoinAt = now
+
           // Ghost cleanup: remove old player if re-joining
           if (ws.data.playerId) {
             const oldRoom = roomManager.getRoom(ws.data.roomCode)
@@ -274,6 +293,11 @@ const server = Bun.serve<WsData>({
 
           if (!room) {
             ws.send(JSON.stringify({ t: 'error', msg: 'Server is at capacity' } satisfies ServerMessage))
+            return
+          }
+
+          if (room.playerCount() >= ROOM_CAPACITY) {
+            ws.send(JSON.stringify({ t: 'error', msg: 'Room is full' } satisfies ServerMessage))
             return
           }
 
