@@ -2,12 +2,14 @@ import {
   WORLD_W, WORLD_H, BASE_SPEED, SPEED_EXPONENT,
   MASS_DECAY_RATE, MIN_MASS, EAT_RATIO, EAT_OVERLAP,
   PELLET_COUNT, PELLET_MASS_PER_CHAR,
+  SPLIT_VELOCITY, SPLIT_DECEL, MERGE_TIME, TICK_RATE,
 } from "@shared/constants";
 import {
   handleToColor, massToRadius, pelletRadius,
   type PlayerState, type PelletState,
 } from "@shared/protocol";
 import { createRng } from "./seededRandom";
+import type { ActConfig, BotConfig, Waypoint } from "./ActConfig";
 
 type LocalCell = {
   cellId: number;
@@ -16,6 +18,7 @@ type LocalCell = {
   mass: number;
   vx: number;
   vy: number;
+  splitTime: number;
 };
 
 type Entity = {
@@ -23,23 +26,17 @@ type Entity = {
   handle: string;
   color: string;
   cells: LocalCell[];
+  nextCellId: number;
 };
 
 type Bot = Entity & {
   targetX: number;
   targetY: number;
   wanderTimer: number;
+  forceChase: boolean;
 };
 
 type Pellet = { id: number; x: number; y: number; word: string };
-
-type Waypoint = { x: number; y: number };
-
-const BOT_HANDLES = [
-  "@synthwave", "@tensorcat", "@pixeldrift", "@neuralnet",
-  "@bitshift", "@zeroday", "@kernelpanic", "@darkmode",
-  "@overfit", "@gradientdrop", "@quantum_bit", "@nullpointer",
-];
 
 const PELLET_WORDS = [
   "async", "await", "void", "null", "fork", "malloc", "mutex",
@@ -51,56 +48,89 @@ const PELLET_WORDS = [
   "tensor", "epoch", "batch", "dropout", "relu", "softmax",
 ];
 
+const MERGE_FRAMES = Math.round((MERGE_TIME / 1000) * 30);
+
 export class Simulation {
   private rng: () => number;
   private player: Entity;
   private bots: Bot[];
   private pellets: Pellet[];
-  private nextPelletId: number;
+  private nextPelletId = 0;
   private playerTexts: Map<string, string>;
   private waypoints: Waypoint[];
   private waypointIndex = 0;
   private waypointProgress = 0;
+  private config: ActConfig;
+  private currentFrame = 0;
 
-  constructor(seed: number, waypoints: Waypoint[]) {
-    this.rng = createRng(seed);
-    this.waypoints = waypoints;
+  constructor(config: ActConfig) {
+    this.config = config;
+    this.rng = createRng(config.seed);
+    this.waypoints = config.waypoints;
     this.playerTexts = new Map();
 
-    const start = waypoints[0] || { x: WORLD_W / 2, y: WORLD_H / 2 };
+    const start = config.playerStart;
     this.player = {
       id: "player",
-      handle: "@you",
-      color: handleToColor("@you"),
-      cells: [{ cellId: 0, x: start.x, y: start.y, mass: 150, vx: 0, vy: 0 }],
+      handle: config.playerHandle,
+      color: handleToColor(config.playerHandle),
+      cells: [{
+        cellId: 0, x: start.x, y: start.y,
+        mass: config.playerMass, vx: 0, vy: 0, splitTime: -9999,
+      }],
+      nextCellId: 1,
     };
-    this.playerTexts.set("player", "@you");
+    this.playerTexts.set("player", config.playerTexts || config.playerHandle);
 
-    this.bots = BOT_HANDLES.map((h) => this.createBot(h));
+    this.bots = config.bots.map((bc) => this.createBotFromConfig(bc));
 
     this.pellets = [];
-    this.nextPelletId = 0;
     for (let i = 0; i < PELLET_COUNT; i++) {
       this.pellets.push(this.spawnPellet());
     }
+
+    if (config.pelletCluster) {
+      const { cx, cy, radius, count } = config.pelletCluster;
+      for (let i = 0; i < count; i++) {
+        const angle = this.rng() * Math.PI * 2;
+        const dist = this.rng() * radius;
+        this.pellets.push({
+          id: this.nextPelletId++,
+          x: cx + Math.cos(angle) * dist,
+          y: cy + Math.sin(angle) * dist,
+          word: PELLET_WORDS[Math.floor(this.rng() * PELLET_WORDS.length)],
+        });
+      }
+    }
   }
 
-  static fromSeed(seed: number, waypoints: Waypoint[]): Simulation {
-    return new Simulation(seed, waypoints);
+  static fromConfig(config: ActConfig): Simulation {
+    return new Simulation(config);
   }
 
   step(dt: number): void {
+    for (const event of this.config.events) {
+      if (event.frame === this.currentFrame) {
+        if (event.type === "split") this.splitPlayer();
+      }
+    }
+
     this.movePlayerAlongPath(dt);
+    this.moveSplitCells(dt);
+    this.resolvePlayerCells();
     this.updateBots(dt);
     this.decayMass(dt);
     this.eatPellets();
     this.checkCollisions();
     this.replenishPellets();
+    this.currentFrame++;
   }
 
   runToFrame(frame: number, fps: number): void {
-    const dt = 1 / fps;
     for (let i = 0; i < frame; i++) {
+      const inSlowMo = this.config.slowMoRange &&
+        i >= this.config.slowMoRange[0] && i <= this.config.slowMoRange[1];
+      const dt = inSlowMo ? 0.5 / fps : 1 / fps;
       this.step(dt);
     }
   }
@@ -119,6 +149,111 @@ export class Simulation {
 
   getLocalPlayerId(): string {
     return "player";
+  }
+
+  private splitPlayer(): void {
+    const p = this.player;
+    const toAdd: LocalCell[] = [];
+
+    for (const cell of p.cells) {
+      if (cell.mass < 100) continue;
+      if (p.cells.length + toAdd.length >= 8) break;
+
+      const halfMass = cell.mass / 2;
+      cell.mass = halfMass;
+
+      let targetX = cell.x + 200;
+      let targetY = cell.y;
+      let minDist = Infinity;
+      for (const bot of this.bots) {
+        const bc = bot.cells[0];
+        if (!bc) continue;
+        const dx = bc.x - cell.x;
+        const dy = bc.y - cell.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < minDist) {
+          minDist = d;
+          targetX = bc.x;
+          targetY = bc.y;
+        }
+      }
+
+      const dx = targetX - cell.x;
+      const dy = targetY - cell.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const nx = dx / dist;
+      const ny = dy / dist;
+
+      toAdd.push({
+        cellId: p.nextCellId++,
+        x: cell.x + nx * massToRadius(halfMass),
+        y: cell.y + ny * massToRadius(halfMass),
+        mass: halfMass,
+        vx: nx * SPLIT_VELOCITY,
+        vy: ny * SPLIT_VELOCITY,
+        splitTime: this.currentFrame,
+      });
+      cell.splitTime = this.currentFrame;
+    }
+    p.cells.push(...toAdd);
+  }
+
+  private moveSplitCells(dt: number): void {
+    for (const cell of this.player.cells) {
+      if (cell.vx === 0 && cell.vy === 0) continue;
+      cell.x += cell.vx * dt;
+      cell.y += cell.vy * dt;
+      const decel = Math.pow(SPLIT_DECEL, dt * TICK_RATE);
+      cell.vx *= decel;
+      cell.vy *= decel;
+      if (Math.abs(cell.vx) < 1 && Math.abs(cell.vy) < 1) {
+        cell.vx = 0;
+        cell.vy = 0;
+      }
+      const r = massToRadius(cell.mass);
+      cell.x = Math.max(r, Math.min(WORLD_W - r, cell.x));
+      cell.y = Math.max(r, Math.min(WORLD_H - r, cell.y));
+    }
+  }
+
+  private resolvePlayerCells(): void {
+    const p = this.player;
+    if (p.cells.length < 2) return;
+    for (let i = 0; i < p.cells.length; i++) {
+      for (let j = i + 1; j < p.cells.length; j++) {
+        const a = p.cells[i];
+        const b = p.cells[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const ra = massToRadius(a.mass);
+        const rb = massToRadius(b.mass);
+        const overlap = ra + rb - dist;
+        if (overlap <= 0) continue;
+
+        const canMerge =
+          (this.currentFrame - a.splitTime >= MERGE_FRAMES) &&
+          (this.currentFrame - b.splitTime >= MERGE_FRAMES);
+
+        if (canMerge) {
+          const [keep, absorb] = a.mass >= b.mass ? [a, b] : [b, a];
+          const tm = keep.mass + absorb.mass;
+          keep.x = (keep.x * keep.mass + absorb.x * absorb.mass) / tm;
+          keep.y = (keep.y * keep.mass + absorb.y * absorb.mass) / tm;
+          keep.mass = tm;
+          p.cells.splice(p.cells.indexOf(absorb), 1);
+          j--;
+        } else {
+          const pushDist = overlap / 2;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          a.x -= nx * pushDist;
+          a.y -= ny * pushDist;
+          b.x += nx * pushDist;
+          b.y += ny * pushDist;
+        }
+      }
+    }
   }
 
   private toPS(e: Entity): PlayerState {
@@ -155,13 +290,15 @@ export class Simulation {
     const tx = from.x + (to.x - from.x) * t;
     const ty = from.y + (to.y - from.y) * t;
 
-    const dx = tx - cell.x;
-    const dy = ty - cell.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > 1) {
-      const move = Math.min(dist, speed * dt);
-      cell.x += (dx / dist) * move;
-      cell.y += (dy / dist) * move;
+    if (cell.vx === 0 && cell.vy === 0) {
+      const dx = tx - cell.x;
+      const dy = ty - cell.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 1) {
+        const move = Math.min(dist, speed * dt);
+        cell.x += (dx / dist) * move;
+        cell.y += (dy / dist) * move;
+      }
     }
 
     const r = massToRadius(cell.mass);
@@ -186,7 +323,11 @@ export class Simulation {
         const dx = pc.x - cell.x;
         const dy = pc.y - cell.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 400) {
+
+        if (bot.forceChase) {
+          bot.targetX = pc.x;
+          bot.targetY = pc.y;
+        } else if (dist < 400) {
           if (pc.mass > cell.mass * EAT_RATIO) {
             const nx = -dx / (dist || 1);
             const ny = -dy / (dist || 1);
@@ -265,20 +406,24 @@ export class Simulation {
   private checkCollisions() {
     for (let bi = this.bots.length - 1; bi >= 0; bi--) {
       const bot = this.bots[bi];
-      const bc = bot.cells[0];
-      if (!bc) continue;
-      for (const pc of this.player.cells) {
-        const pcR = massToRadius(pc.mass);
-        const bcR = massToRadius(bc.mass);
-        const dx = pc.x - bc.x;
-        const dy = pc.y - bc.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (pc.mass >= bc.mass * EAT_RATIO && dist < pcR * EAT_OVERLAP + bcR * (1 - EAT_OVERLAP)) {
-          pc.mass += bc.mass;
-          const existing = this.playerTexts.get("player") || "@you";
-          this.playerTexts.set("player", existing + " " + bot.handle);
-          this.bots[bi] = this.createBot(bot.handle);
-          break;
+      for (let ci = bot.cells.length - 1; ci >= 0; ci--) {
+        const bc = bot.cells[ci];
+        for (const pc of this.player.cells) {
+          const pcR = massToRadius(pc.mass);
+          const bcR = massToRadius(bc.mass);
+          const dx = pc.x - bc.x;
+          const dy = pc.y - bc.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (pc.mass >= bc.mass * EAT_RATIO && dist < pcR * EAT_OVERLAP + bcR * (1 - EAT_OVERLAP)) {
+            pc.mass += bc.mass;
+            bot.cells.splice(ci, 1);
+            if (bot.cells.length === 0) {
+              const existing = this.playerTexts.get("player") || this.config.playerHandle;
+              this.playerTexts.set("player", existing + " " + bot.handle);
+              this.bots[bi] = this.respawnBot(bot.handle);
+            }
+            break;
+          }
         }
       }
     }
@@ -289,16 +434,16 @@ export class Simulation {
         const bc = this.bots[j].cells[0];
         if (!ac || !bc) continue;
         const dx = ac.x - bc.x;
-        const dy = bc.y - ac.y;
+        const dy = ac.y - bc.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const acR = massToRadius(ac.mass);
         const bcR = massToRadius(bc.mass);
         if (ac.mass >= bc.mass * EAT_RATIO && dist < acR * EAT_OVERLAP + bcR * (1 - EAT_OVERLAP)) {
           ac.mass += bc.mass;
-          this.bots[j] = this.createBot(this.bots[j].handle);
+          this.bots[j] = this.respawnBot(this.bots[j].handle);
         } else if (bc.mass >= ac.mass * EAT_RATIO && dist < bcR * EAT_OVERLAP + acR * (1 - EAT_OVERLAP)) {
           bc.mass += ac.mass;
-          this.bots[i] = this.createBot(this.bots[i].handle);
+          this.bots[i] = this.respawnBot(this.bots[i].handle);
         }
       }
     }
@@ -310,8 +455,25 @@ export class Simulation {
     }
   }
 
-  private createBot(handle: string): Bot {
-    const mass = 100 + this.rng() * 300;
+  private createBotFromConfig(bc: BotConfig): Bot {
+    return {
+      id: `bot-${bc.handle}`,
+      handle: bc.handle,
+      color: handleToColor(bc.handle),
+      cells: [{
+        cellId: 0, x: bc.x, y: bc.y,
+        mass: bc.mass, vx: 0, vy: 0, splitTime: -9999,
+      }],
+      nextCellId: 1,
+      targetX: bc.x + (this.rng() - 0.5) * 200,
+      targetY: bc.y + (this.rng() - 0.5) * 200,
+      wanderTimer: 3 + this.rng() * 5,
+      forceChase: bc.forceChase || false,
+    };
+  }
+
+  private respawnBot(handle: string): Bot {
+    const mass = 100 + this.rng() * 200;
     return {
       id: `bot-${handle}`,
       handle,
@@ -320,11 +482,13 @@ export class Simulation {
         cellId: 0,
         x: this.rng() * WORLD_W,
         y: this.rng() * WORLD_H,
-        mass, vx: 0, vy: 0,
+        mass, vx: 0, vy: 0, splitTime: -9999,
       }],
+      nextCellId: 1,
       targetX: this.rng() * WORLD_W,
       targetY: this.rng() * WORLD_H,
       wanderTimer: 3 + this.rng() * 5,
+      forceChase: false,
     };
   }
 
