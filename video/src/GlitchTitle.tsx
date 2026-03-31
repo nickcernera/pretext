@@ -7,7 +7,7 @@ import {
 } from "remotion";
 import { spaceGrotesk } from "./fonts";
 
-const TITLE = "PRETEXT";
+const TITLE = "PRETEXT ARENA";
 const SCRAMBLE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*<>/";
 const GREEN = "#00ff41";
 const DECODE_STAGGER = 4; // frames between each char settling
@@ -42,7 +42,7 @@ export const GlitchTitle: React.FC = () => {
       <div
         style={{
           display: "flex",
-          gap: 6,
+          gap: 4,
           opacity: appearOpacity,
           transform: `scale(${scale})`,
         }}
@@ -69,7 +69,7 @@ export const GlitchTitle: React.FC = () => {
             <span
               key={i}
               style={{
-                fontSize: 150,
+                fontSize: 110,
                 fontFamily: spaceGrotesk,
                 fontWeight: 700,
                 color: settled ? GREEN : "rgba(0, 255, 65, 0.4)",

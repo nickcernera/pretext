@@ -1,29 +1,57 @@
-import { AbsoluteFill, Sequence, useVideoConfig } from "remotion";
-import { MatrixRain } from "./MatrixRain";
+import {
+  AbsoluteFill,
+  Sequence,
+  interpolate,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
+import { GameCanvas } from "./GameCanvas";
 import { GlitchTitle } from "./GlitchTitle";
 import { Typewriter } from "./Typewriter";
-import { BlobScene } from "./BlobScene";
 import { CallToAction } from "./CallToAction";
 
 export const LaunchVideo: React.FC = () => {
+  const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  return (
-    <AbsoluteFill>
-      {/* Layer 1: Matrix rain background (always on) */}
-      <MatrixRain />
+  // Fade in from black at start
+  const fadeIn = interpolate(frame, [0, fps * 1.5], [0, 1], {
+    extrapolateRight: "clamp",
+  });
 
-      {/* Layer 2: Dark overlay so text is readable */}
-      <AbsoluteFill
-        style={{ backgroundColor: "rgba(5, 10, 8, 0.4)" }}
-      />
+  // Fade to black at end
+  const fadeOut = interpolate(
+    frame,
+    [fps * 14.5, fps * 16],
+    [1, 0],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+
+  const masterOpacity = Math.min(fadeIn, fadeOut);
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: "#050a08" }}>
+      {/* Layer 1: Real gameplay (full duration) */}
+      <AbsoluteFill style={{ opacity: masterOpacity }}>
+        <GameCanvas />
+      </AbsoluteFill>
+
+      {/* Layer 2: Dark overlay for title readability */}
+      <Sequence from={0} durationInFrames={fps * 6}>
+        <AbsoluteFill
+          style={{
+            backgroundColor: `rgba(5, 10, 8, ${interpolate(
+              frame,
+              [0, fps * 4, fps * 6],
+              [0.5, 0.5, 0],
+              { extrapolateRight: "clamp" },
+            )})`,
+          }}
+        />
+      </Sequence>
 
       {/* Scene 1: Title glitch decode (0–5s) */}
-      <Sequence
-        from={0}
-        durationInFrames={fps * 5}
-
-      >
+      <Sequence from={0} durationInFrames={fps * 5}>
         <GlitchTitle />
       </Sequence>
 
@@ -37,7 +65,7 @@ export const LaunchVideo: React.FC = () => {
           style={{
             justifyContent: "center",
             alignItems: "center",
-            paddingTop: 220,
+            paddingTop: 200,
           }}
         >
           <Typewriter
@@ -48,21 +76,18 @@ export const LaunchVideo: React.FC = () => {
         </AbsoluteFill>
       </Sequence>
 
-      {/* Scene 2: Blob eating demo (6–11s) */}
-      <Sequence
-        from={fps * 6}
-        durationInFrames={fps * 5}
-
-      >
-        <BlobScene />
-      </Sequence>
-
-      {/* Scene 3: Call to action (11.5–16s) */}
-      <Sequence
-        from={Math.floor(fps * 11.5)}
-        durationInFrames={Math.floor(fps * 4.5)}
-
-      >
+      {/* Scene 3: CTA (13–16s) */}
+      <Sequence from={fps * 13} durationInFrames={fps * 3}>
+        <AbsoluteFill
+          style={{
+            backgroundColor: `rgba(5, 10, 8, ${interpolate(
+              frame - fps * 13,
+              [0, fps * 0.5],
+              [0, 0.5],
+              { extrapolateRight: "clamp" },
+            )})`,
+          }}
+        />
         <CallToAction />
       </Sequence>
     </AbsoluteFill>
