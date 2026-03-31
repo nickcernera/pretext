@@ -81,9 +81,9 @@ export const HomepageScene: React.FC = () => {
     const prepared = prepareWithSegments(SEA_CORPUS, font);
     let cursor = { segmentIndex: 0, graphemeIndex: 0 };
 
-    // Panel exclusion zone (tighter to match actual content)
-    const panelW = 480;
-    const panelH = 260;
+    // Panel exclusion zone — match the actual DOM content area
+    const panelW = 440;
+    const panelH = 240;
     const panelX = (width - panelW) / 2;
     const panelY = (height - panelH) / 2;
 

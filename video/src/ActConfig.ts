@@ -32,6 +32,8 @@ export type ActConfig = {
   pelletCluster?: PelletCluster;
   events: ScriptedEvent[];
   slowMoRange?: [number, number];
+  /** Override camera zoom (bypasses the mass-based formula). Higher = more zoomed in. */
+  cameraZoom?: number;
 };
 
 export const ACT_1: ActConfig = {
@@ -39,6 +41,7 @@ export const ACT_1: ActConfig = {
   playerHandle: "@cerneradesign",
   playerMass: 200,
   playerStart: { x: 2000, y: 2000 },
+  cameraZoom: 0.8, // tight zoom for spawn scene
   waypoints: [
     { x: 2000, y: 2000 },
     { x: 2150, y: 1900 },
@@ -49,8 +52,8 @@ export const ACT_1: ActConfig = {
     { x: 2000, y: 2000 },
   ],
   bots: [
-    { handle: "@synthwave", mass: 120, x: 2500, y: 1700 }, // visible in frame
-    { handle: "@tensorcat", mass: 100, x: 1600, y: 2400 }, // visible in frame
+    { handle: "@synthwave", mass: 120, x: 2400, y: 1800 },
+    { handle: "@tensorcat", mass: 100, x: 1700, y: 2300 },
     { handle: "@pixeldrift", mass: 90, x: 3500, y: 1000 },
   ],
   pelletCluster: { cx: 2200, cy: 2000, radius: 350, count: 25 },
@@ -61,47 +64,49 @@ export const ACT_2: ActConfig = {
   seed: 200,
   playerHandle: "@cerneradesign",
   playerMass: 300,
-  playerStart: { x: 1500, y: 2000 },
+  playerStart: { x: 2000, y: 2000 },
   playerTexts: "@cerneradesign async void malloc grep",
+  cameraZoom: 0.6, // medium zoom — both blobs visible and large
   waypoints: [
-    { x: 1500, y: 2000 },
-    { x: 1300, y: 1850 }, // flee
-    { x: 1100, y: 1700 }, // through pellets
-    { x: 1050, y: 1500 },
-    { x: 1200, y: 1350 }, // turning back
-    { x: 1500, y: 1500 },
-    { x: 1650, y: 1800 },
+    { x: 2000, y: 2000 },
+    { x: 1850, y: 1850 }, // flee
+    { x: 1700, y: 1700 }, // through pellets
+    { x: 1650, y: 1550 },
+    { x: 1800, y: 1400 }, // turning back
+    { x: 2050, y: 1500 },
+    { x: 2150, y: 1750 },
   ],
   bots: [
-    { handle: "@kernelpanic", mass: 650, x: 1650, y: 2100, forceChase: true }, // big, close, menacing
-    { handle: "@darkmode", mass: 80, x: 3000, y: 3000 },
-    { handle: "@nullpointer", mass: 100, x: 500, y: 500 },
+    { handle: "@kernelpanic", mass: 1200, x: 2100, y: 2080, forceChase: true },
+    { handle: "@darkmode", mass: 80, x: 3200, y: 3200 },
+    { handle: "@nullpointer", mass: 100, x: 800, y: 800 },
   ],
-  pelletCluster: { cx: 1100, cy: 1600, radius: 300, count: 40 },
+  pelletCluster: { cx: 1700, cy: 1600, radius: 300, count: 40 },
   events: [],
 };
 
 export const ACT_3: ActConfig = {
   seed: 300,
   playerHandle: "@cerneradesign",
-  playerMass: 800,
+  playerMass: 2000, // massive — dominates the screen
   playerStart: { x: 2000, y: 2000 },
-  playerTexts: "@cerneradesign @kernelpanic async void malloc grep fork exec sudo tensor",
+  playerTexts: "@cerneradesign @kernelpanic async void malloc grep fork exec sudo tensor epoch batch dropout",
+  cameraZoom: 0.5, // zoomed in — blob fills ~40% of screen, world boundary stays offscreen
   waypoints: [
     { x: 2000, y: 2000 },
-    { x: 2100, y: 2000 },
-    { x: 2200, y: 2000 }, // approaching bots
-    { x: 2300, y: 2000 },
-    { x: 2400, y: 2000 },
+    { x: 2080, y: 2000 },
+    { x: 2160, y: 2000 },
+    { x: 2240, y: 2000 },
+    { x: 2320, y: 2000 },
   ],
   bots: [
-    { handle: "@overfit", mass: 120, x: 2250, y: 1970 },   // tight cluster, close
-    { handle: "@bitshift", mass: 100, x: 2280, y: 2040 },
-    { handle: "@zeroday", mass: 130, x: 2320, y: 2000 },
+    { handle: "@overfit", mass: 150, x: 2220, y: 1960 },
+    { handle: "@bitshift", mass: 120, x: 2260, y: 2050 },
+    { handle: "@zeroday", mass: 160, x: 2300, y: 2000 },
     { handle: "@darkmode", mass: 80, x: 3500, y: 3500 },
   ],
   events: [
-    { frame: 30, type: "split" }, // split early, bots are close
+    { frame: 30, type: "split" },
   ],
   slowMoRange: [25, 45],
 };

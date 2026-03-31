@@ -20,6 +20,20 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
       ...config.bots.map((b) => b.handle),
     ];
     renderer.rain.setHandles(handles);
+
+    // Override camera zoom: monkey-patch follow() to preserve our zoom
+    if (config.cameraZoom) {
+      const zoom = config.cameraZoom;
+      const originalFollow = renderer.camera.follow.bind(renderer.camera);
+      renderer.camera.follow = (px: number, py: number, pm: number, sw: number, sh: number) => {
+        originalFollow(px, py, pm, sw, sh);
+        // Override the mass-based zoom with our cinematic zoom
+        (renderer.camera as any).targetScale = zoom;
+      };
+      renderer.camera.scale = zoom;
+      (renderer.camera as any).targetScale = zoom;
+    }
+
     rendererRef.current = renderer;
   }, [width, height, config]);
 
@@ -48,6 +62,13 @@ export const GameCanvas: React.FC<{ config: ActConfig }> = ({ config }) => {
           radius: Math.sqrt(c.mass / Math.PI) * 4,
         })),
       );
+
+      // Pre-position camera directly to player (Remotion renders frames
+      // independently, so the camera lerp never converges — we must snap it)
+      renderer.camera.x = localPlayer.x - width / 2;
+      renderer.camera.y = localPlayer.y - height / 2;
+      (renderer.camera as any).targetX = renderer.camera.x;
+      (renderer.camera as any).targetY = renderer.camera.y;
     }
 
     const now = (frame / fps) * 1000;
