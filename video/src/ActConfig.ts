@@ -77,7 +77,7 @@ export const ACT_2: ActConfig = {
     { x: 2150, y: 1750 },
   ],
   bots: [
-    { handle: "@kernelpanic", mass: 1200, x: 2100, y: 2080, forceChase: true },
+    { handle: "@kernelpanic", mass: 2400, x: 2100, y: 2080, forceChase: true },
     { handle: "@darkmode", mass: 80, x: 3200, y: 3200 },
     { handle: "@nullpointer", mass: 100, x: 800, y: 800 },
   ],
@@ -88,7 +88,7 @@ export const ACT_2: ActConfig = {
 export const ACT_3: ActConfig = {
   seed: 300,
   playerHandle: "@cerneradesign",
-  playerMass: 2000, // massive — dominates the screen
+  playerMass: 4000, // massive — dominates the screen
   playerStart: { x: 2000, y: 2000 },
   playerTexts: "@cerneradesign @kernelpanic async void malloc grep fork exec sudo tensor epoch batch dropout",
   cameraZoom: 0.9, // tight — massive blob fills screen
