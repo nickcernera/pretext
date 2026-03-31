@@ -32,17 +32,20 @@ export const HomepageScene: React.FC = () => {
   const { fps, width, height } = useVideoConfig();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Cursor position (used by both canvas and DOM)
+  // Cursor position — lands on Quick Play button center
+  // Button is roughly at height/2 + 130 (below title+tagline+attribution+gap)
+  const btnCenterX = width / 2;
+  const btnCenterY = height / 2 + 130;
   const cursorX = interpolate(
     frame,
     [fps * 0.8, fps * 2.5, fps * 3],
-    [width * 0.65, width / 2 + 80, width / 2 + 80],
+    [width * 0.65, btnCenterX, btnCenterX],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.quad) },
   );
   const cursorY = interpolate(
     frame,
     [fps * 0.8, fps * 2.5, fps * 3],
-    [height * 0.35, height / 2 + 110, height / 2 + 110],
+    [height * 0.3, btnCenterY, btnCenterY],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.quad) },
   );
 
@@ -78,9 +81,9 @@ export const HomepageScene: React.FC = () => {
     const prepared = prepareWithSegments(SEA_CORPUS, font);
     let cursor = { segmentIndex: 0, graphemeIndex: 0 };
 
-    // Panel exclusion zone
-    const panelW = 560;
-    const panelH = 300;
+    // Panel exclusion zone (tighter to match actual content)
+    const panelW = 480;
+    const panelH = 260;
     const panelX = (width - panelW) / 2;
     const panelY = (height - panelH) / 2;
 
@@ -203,23 +206,23 @@ export const HomepageScene: React.FC = () => {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: 16,
+            gap: 18,
           }}
         >
           <div
             style={{
-              fontSize: 64,
+              fontSize: 80,
               fontFamily: spaceGrotesk,
               fontWeight: 700,
               color: BRIGHT,
-              letterSpacing: -1,
+              letterSpacing: -2,
             }}
           >
             pretext arena
           </div>
           <div
             style={{
-              fontSize: 14,
+              fontSize: 18,
               fontFamily: spaceMono,
               color: MUTED,
             }}
@@ -228,24 +231,28 @@ export const HomepageScene: React.FC = () => {
           </div>
           <div
             style={{
-              fontSize: 12,
+              fontSize: 16,
               fontFamily: spaceMono,
-              color: MUTED,
-              opacity: 0.7,
-              marginTop: -8,
+              color: GREEN,
+              opacity: 0.8,
+              marginTop: -4,
             }}
           >
-            powered by @chenglou/pretext
+            powered by{" "}
+            <span style={{ color: BRIGHT, fontWeight: 700 }}>
+              @chenglou/pretext
+            </span>
           </div>
           <div
             style={{
-              marginTop: 20,
-              padding: "14px 40px",
+              marginTop: 24,
+              padding: "16px 48px",
               border: `1px solid ${GREEN}`,
               borderRadius: 4,
               backgroundColor: buttonBg,
-              fontSize: 14,
+              fontSize: 18,
               fontFamily: spaceMono,
+              fontWeight: 700,
               color: GREEN,
             }}
           >
@@ -254,21 +261,31 @@ export const HomepageScene: React.FC = () => {
         </div>
       </AbsoluteFill>
 
-      {/* Animated cursor */}
+      {/* Animated crosshair cursor (matches game's actual cursor) */}
       {cursorVisible && (
-        <div
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
           style={{
             position: "absolute",
-            left: cursorX - 6,
-            top: cursorY - 6,
-            width: 12,
-            height: 12,
-            borderRadius: "50%",
-            backgroundColor: GREEN,
+            left: cursorX - 12,
+            top: cursorY - 12,
             opacity: cursorOpacity,
-            boxShadow: `0 0 ${8 + clickFlash * 20}px rgba(0, 255, 65, ${0.6 + clickFlash * 0.4})`,
+            filter: `drop-shadow(0 0 2px ${GREEN}) drop-shadow(0 0 ${6 + clickFlash * 14}px ${GREEN}) drop-shadow(0 0 ${14 + clickFlash * 20}px rgba(0,255,65,0.4))`,
           }}
-        />
+        >
+          {/* Top arm */}
+          <line x1="12" y1="2" x2="12" y2="8" stroke={GREEN} strokeWidth="1.5" strokeLinecap="round" />
+          {/* Bottom arm */}
+          <line x1="12" y1="16" x2="12" y2="22" stroke={GREEN} strokeWidth="1.5" strokeLinecap="round" />
+          {/* Left arm */}
+          <line x1="2" y1="12" x2="8" y2="12" stroke={GREEN} strokeWidth="1.5" strokeLinecap="round" />
+          {/* Right arm */}
+          <line x1="16" y1="12" x2="22" y2="12" stroke={GREEN} strokeWidth="1.5" strokeLinecap="round" />
+          {/* Center dot */}
+          <circle cx="12" cy="12" r="1.5" fill={GREEN} />
+        </svg>
       )}
     </AbsoluteFill>
   );

@@ -37,7 +37,7 @@ export type ActConfig = {
 export const ACT_1: ActConfig = {
   seed: 100,
   playerHandle: "@cerneradesign",
-  playerMass: 100,
+  playerMass: 200,
   playerStart: { x: 2000, y: 2000 },
   waypoints: [
     { x: 2000, y: 2000 },
@@ -49,11 +49,11 @@ export const ACT_1: ActConfig = {
     { x: 2000, y: 2000 },
   ],
   bots: [
-    { handle: "@synthwave", mass: 120, x: 3200, y: 3200 },
-    { handle: "@tensorcat", mass: 100, x: 800, y: 800 },
+    { handle: "@synthwave", mass: 120, x: 2500, y: 1700 }, // visible in frame
+    { handle: "@tensorcat", mass: 100, x: 1600, y: 2400 }, // visible in frame
     { handle: "@pixeldrift", mass: 90, x: 3500, y: 1000 },
   ],
-  pelletCluster: { cx: 2200, cy: 2000, radius: 400, count: 40 },
+  pelletCluster: { cx: 2200, cy: 2000, radius: 350, count: 25 },
   events: [],
 };
 
@@ -65,19 +65,19 @@ export const ACT_2: ActConfig = {
   playerTexts: "@cerneradesign async void malloc grep",
   waypoints: [
     { x: 1500, y: 2000 },
-    { x: 1200, y: 1800 },
-    { x: 1000, y: 1600 },
-    { x: 1100, y: 1400 },
-    { x: 1400, y: 1300 },
-    { x: 1700, y: 1500 },
-    { x: 1800, y: 1800 },
+    { x: 1300, y: 1850 }, // flee
+    { x: 1100, y: 1700 }, // through pellets
+    { x: 1050, y: 1500 },
+    { x: 1200, y: 1350 }, // turning back
+    { x: 1500, y: 1500 },
+    { x: 1650, y: 1800 },
   ],
   bots: [
-    { handle: "@kernelpanic", mass: 500, x: 1800, y: 2200, forceChase: true },
+    { handle: "@kernelpanic", mass: 650, x: 1650, y: 2100, forceChase: true }, // big, close, menacing
     { handle: "@darkmode", mass: 80, x: 3000, y: 3000 },
     { handle: "@nullpointer", mass: 100, x: 500, y: 500 },
   ],
-  pelletCluster: { cx: 1100, cy: 1500, radius: 350, count: 50 },
+  pelletCluster: { cx: 1100, cy: 1600, radius: 300, count: 40 },
   events: [],
 };
 
@@ -85,23 +85,23 @@ export const ACT_3: ActConfig = {
   seed: 300,
   playerHandle: "@cerneradesign",
   playerMass: 800,
-  playerStart: { x: 1800, y: 2000 },
+  playerStart: { x: 2000, y: 2000 },
   playerTexts: "@cerneradesign @kernelpanic async void malloc grep fork exec sudo tensor",
   waypoints: [
-    { x: 1800, y: 2000 },
     { x: 2000, y: 2000 },
-    { x: 2200, y: 2000 },
+    { x: 2100, y: 2000 },
+    { x: 2200, y: 2000 }, // approaching bots
+    { x: 2300, y: 2000 },
     { x: 2400, y: 2000 },
-    { x: 2500, y: 2000 },
   ],
   bots: [
-    { handle: "@overfit", mass: 120, x: 2500, y: 1950 },
-    { handle: "@bitshift", mass: 100, x: 2550, y: 2050 },
-    { handle: "@zeroday", mass: 130, x: 2600, y: 2000 },
+    { handle: "@overfit", mass: 120, x: 2250, y: 1970 },   // tight cluster, close
+    { handle: "@bitshift", mass: 100, x: 2280, y: 2040 },
+    { handle: "@zeroday", mass: 130, x: 2320, y: 2000 },
     { handle: "@darkmode", mass: 80, x: 3500, y: 3500 },
   ],
   events: [
-    { frame: 60, type: "split" },
+    { frame: 30, type: "split" }, // split early, bots are close
   ],
-  slowMoRange: [55, 75],
+  slowMoRange: [25, 45],
 };
