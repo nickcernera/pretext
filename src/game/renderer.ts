@@ -109,17 +109,18 @@ export class Renderer {
     this.absorption.draw(ctx, now)
 
     // 8. Player blobs — flatten all cells, sort by mass, draw each
-    type CellDraw = { cell: CellState; player: PlayerState; isLocal: boolean }
+    type CellDraw = { cell: CellState; player: PlayerState; isLocal: boolean; cellIndex: number; cellCount: number }
     const allCells: CellDraw[] = []
     for (const p of players) {
       const isLocal = p.id === localPlayerId
-      for (const c of p.cells) {
-        allCells.push({ cell: c, player: p, isLocal })
+      const cellCount = p.cells.length
+      for (let ci = 0; ci < cellCount; ci++) {
+        allCells.push({ cell: p.cells[ci], player: p, isLocal, cellIndex: ci, cellCount })
       }
     }
     allCells.sort((a, b) => a.cell.mass - b.cell.mass) // smallest first (back-to-front)
 
-    for (const { cell, player, isLocal } of allCells) {
+    for (const { cell, player, isLocal, cellIndex, cellCount } of allCells) {
       // Viewport culling — skip blobs entirely outside view
       const blobR = massToRadius(cell.mass)
       if (
@@ -133,6 +134,7 @@ export class Renderer {
       drawBlob(
         ctx, cell.x, cell.y, cell.mass, text, player.color,
         isLocal, player.handle, `${player.id}:${cell.cellId}`, dt, player.avatar,
+        cellIndex, cellCount,
       )
     }
 

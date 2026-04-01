@@ -89,7 +89,7 @@ function parseBlobText(blobId: string, text: string, handle: string): BlobTextPa
   }
   const result: BlobTextParsed = { text, handle, words, victims, corpus: words.join('  ') }
   blobTextParsed.set(blobId, result)
-  if (blobTextParsed.size > 100) {
+  if (blobTextParsed.size > 200) {
     const first = blobTextParsed.keys().next().value
     if (first && first !== blobId) blobTextParsed.delete(first)
   }
@@ -147,6 +147,8 @@ export function drawBlob(
   blobId: string,
   dt: number,
   avatar = '',
+  cellIndex = 0,
+  cellCount = 1,
 ) {
   const radius = massToRadius(mass)
   const now = performance.now()
@@ -204,7 +206,7 @@ export function drawBlob(
   ctx.fillStyle = fillGrad
   ctx.fill(blobPath)
 
-  if (isPlayer) {
+  if (isPlayer && cellCount <= 4) {
     ctx.shadowColor = color
     ctx.shadowBlur = radius * 0.5
     ctx.fill(blobPath)
@@ -229,6 +231,16 @@ export function drawBlob(
 
   // === Parse accumulated text (cached — only recomputes when text changes) ===
   const { words, victims, corpus } = parseBlobText(blobId, text, handle)
+
+  // === Split text sea among cells when player has multiple ===
+  let cellWords = words
+  let cellVictims = victims
+  let cellCorpus = corpus
+  if (cellCount > 1) {
+    cellWords = words.filter((_, i) => i % cellCount === cellIndex)
+    cellVictims = victims.filter((_, i) => i % cellCount === cellIndex)
+    cellCorpus = cellWords.join('  ')
+  }
 
   // === Physics: velocity-based text offset (sloshing) ===
   let phys = blobPhysics.get(blobId)
@@ -258,7 +270,7 @@ export function drawBlob(
   const handleSize = Math.max(7, Math.min(16, radius * 0.13))
 
   // Victim avatar radius — shrink when many victims
-  const numVictims = Math.min(victims.length, MAX_VICTIM_AVATARS)
+  const numVictims = Math.min(cellVictims.length, MAX_VICTIM_AVATARS)
   const baseVictimR = Math.max(5, radius * 0.09)
   const victimR = numVictims > 15
     ? Math.max(3, baseVictimR * (15 / numVictims))
@@ -294,17 +306,17 @@ export function drawBlob(
     }
 
     obstacles.push({ cx: vcx, cy: vcy, radius: victimR + 3 })
-    victimPos.push({ cx: vcx, cy: vcy, handle: victims[i] })
+    victimPos.push({ cx: vcx, cy: vcy, handle: cellVictims[i] })
   }
 
   // === Text sea (clipped to blob circle) ===
-  if (words.length > 0) {
+  if (cellWords.length > 0) {
     ctx.save()
     ctx.beginPath()
     ctx.arc(x, y, radius - 1, 0, Math.PI * 2)
     ctx.clip()
 
-    drawBlobTextSea(ctx, x, y, radius, corpus, obstacles, color, textOffX, textOffY, blobId)
+    drawBlobTextSea(ctx, x, y, radius, cellCorpus, obstacles, color, textOffX, textOffY, blobId)
 
     ctx.restore()
   }

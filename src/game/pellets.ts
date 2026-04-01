@@ -112,8 +112,7 @@ export class PelletRenderer {
         }
       }
 
-      ctx.shadowColor = PELLET_COLOR
-      ctx.shadowBlur = glowBlur
+      ctx.shadowBlur = glowBlur > 6 ? glowBlur : 0
       ctx.globalAlpha = alpha
       ctx.fillStyle = PELLET_COLOR
       ctx.textAlign = 'center'
