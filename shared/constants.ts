@@ -22,7 +22,7 @@ export const EAT_RATIO = 1.15
 export const EAT_OVERLAP = 0.5
 
 // Word Pellets
-export const PELLET_COUNT = 150
+export const PELLET_COUNT = 225
 export const PELLET_MASS_PER_CHAR = 3 // mass = word.length * this
 export const PELLET_FONT_SIZE = 24 // rendered size in the arena
 export const PELLET_HITBOX_PER_CHAR = 2 // hitbox radius = word.length * this
@@ -34,7 +34,7 @@ export const PELLET_GLOW_RANGE = 2.0 // glow activates at this * eat range
 
 // Room
 export const ROOM_CAPACITY = 30
-export const BOT_FILL_THRESHOLD = 8
+export const BOT_FILL_THRESHOLD = 12
 export const ROOM_IDLE_TIMEOUT = 5 * 60_000
 export const LEADERBOARD_INTERVAL = 10 * 60_000
 
