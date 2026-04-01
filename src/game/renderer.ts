@@ -2,6 +2,7 @@ import { drawBackground } from './background'
 import { MatrixRain } from './rain'
 import { drawBlob } from './blob'
 import { PelletRenderer } from './pellets'
+import { AbsorptionRenderer } from './absorption'
 import { Camera } from './camera'
 import { HUD } from './hud'
 import { massToRadius, type PlayerState, type CellState } from '@shared/protocol'
@@ -13,6 +14,7 @@ const blobHolesPool: { x: number; y: number; radius: number }[] = []
 export class Renderer {
   readonly rain = new MatrixRain()
   readonly pellets = new PelletRenderer()
+  readonly absorption = new AbsorptionRenderer()
   readonly camera = new Camera()
   readonly hud = new HUD()
   private lastTime = 0
@@ -102,6 +104,9 @@ export class Renderer {
 
     // 7. Pellets (word pellets in world space)
     this.pellets.draw(ctx)
+
+    // 7.5. Absorption flow effects (above pellets, below blobs)
+    this.absorption.draw(ctx, now)
 
     // 8. Player blobs — flatten all cells, sort by mass, draw each
     type CellDraw = { cell: CellState; player: PlayerState; isLocal: boolean }

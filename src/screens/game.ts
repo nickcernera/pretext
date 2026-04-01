@@ -212,20 +212,21 @@ export class GameScreen {
           for (const prev of this.onlinePellets) {
             if (!currentIds.has(prev.id)) {
               // Find nearest player cell
-              let closest: { id: string; handle: string; dist: number } | null = null
+              let closest: { id: string; handle: string; dist: number; cx: number; cy: number } | null = null
               for (const p of players) {
                 for (const c of p.cells) {
                   const dx = c.x - prev.x
                   const dy = c.y - prev.y
                   const dist = dx * dx + dy * dy
                   if (!closest || dist < closest.dist) {
-                    closest = { id: p.id, handle: p.handle, dist }
+                    closest = { id: p.id, handle: p.handle, dist, cx: c.x, cy: c.y }
                   }
                 }
               }
               if (closest) {
                 const existing = this.playerTexts.get(closest.id) || closest.handle
                 this.playerTexts.set(closest.id, existing + ' ' + prev.word)
+                this.renderer.absorption.add(prev.word, { x: prev.x, y: prev.y }, { x: closest.cx, y: closest.cy }, '#80ffa0', 800)
               }
             }
           }
@@ -246,12 +247,25 @@ export class GameScreen {
         const handles = players.map(p => p.handle)
         this.renderer.rain.setHandles(handles)
       },
-      onKill: (killerId, _victimId, killerHandle, victimHandle) => {
+      onKill: (killerId, victimId, killerHandle, victimHandle) => {
         const existing = this.playerTexts.get(killerId) || killerHandle
         this.playerTexts.set(killerId, existing + ' ' + victimHandle)
 
         this.renderer.hud.addKillEvent(killerHandle, victimHandle)
         this.renderer.rain.addKill(killerHandle, victimHandle)
+
+        // Absorption flow: victim -> killer
+        const killer = this.onlinePlayers.find(p => p.id === killerId)
+        const victim = this.onlinePlayers.find(p => p.id === victimId)
+        if (killer && victim) {
+          this.renderer.absorption.add(
+            victimHandle,
+            { x: victim.x, y: victim.y },
+            { x: killer.x, y: killer.y },
+            killer.color,
+            1200,
+          )
+        }
 
         // Kill celebration toast for local player kills
         if (killerId === this.playerId) {
@@ -922,6 +936,7 @@ export class GameScreen {
         cell.mass += p.word.length * PELLET_MASS_PER_CHAR
         const existing = this.playerTexts.get(entityId) || ''
         this.playerTexts.set(entityId, existing + ' ' + p.word)
+        this.renderer.absorption.add(p.word, { x: p.x, y: p.y }, { x: cell.x, y: cell.y }, '#80ffa0', 800)
         this.pellets.splice(i, 1)
       }
     }
@@ -953,6 +968,13 @@ export class GameScreen {
                 this.victims.push(bot.handle)
                 const existing = this.playerTexts.get(this.playerId) || this.handle
                 this.playerTexts.set(this.playerId, existing + ' ' + bot.handle)
+                this.renderer.absorption.add(
+                  bot.handle,
+                  { x: bc.x, y: bc.y },
+                  { x: pc.x, y: pc.y },
+                  handleToColor(this.handle),
+                  1200,
+                )
                 this.renderer.hud.addKillEvent(this.handle, bot.handle)
                 this.renderer.rain.addKill(this.handle, bot.handle)
                 this.bots[bi] = this.createBot(bot.handle)
@@ -997,6 +1019,13 @@ export class GameScreen {
                 ac.mass += bc.mass
                 b.cells.splice(ci, 1)
                 if (b.cells.length === 0) {
+                  this.renderer.absorption.add(
+                    b.handle,
+                    { x: bc.x, y: bc.y },
+                    { x: ac.x, y: ac.y },
+                    handleToColor(a.handle),
+                    1200,
+                  )
                   this.renderer.hud.addKillEvent(a.handle, b.handle)
                   this.renderer.rain.addKill(a.handle, b.handle)
                   this.bots[j] = this.createBot(b.handle)
@@ -1008,6 +1037,13 @@ export class GameScreen {
                 bc.mass += ac.mass
                 a.cells = a.cells.filter(c => c.cellId !== ac.cellId)
                 if (a.cells.length === 0) {
+                  this.renderer.absorption.add(
+                    a.handle,
+                    { x: ac.x, y: ac.y },
+                    { x: bc.x, y: bc.y },
+                    handleToColor(b.handle),
+                    1200,
+                  )
                   this.renderer.hud.addKillEvent(b.handle, a.handle)
                   this.renderer.rain.addKill(b.handle, a.handle)
                   this.bots[i] = this.createBot(a.handle)
