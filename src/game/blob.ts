@@ -29,6 +29,22 @@ export function triggerSpasm(blobId: string) {
   spasmMap.set(blobId, performance.now() + 300) // 300ms spasm
 }
 
+/** Seed blob physics with previous-frame positions so velocity-based wobble/sloshing works.
+ *  Optional offX/offY lets callers restore sloshing spring state (used by Remotion renderer). */
+export function seedBlobPhysics(entries: { blobId: string; prevX: number; prevY: number; offX?: number; offY?: number }[]) {
+  for (const e of entries) {
+    const existing = blobPhysics.get(e.blobId)
+    if (existing) {
+      existing.prevX = e.prevX
+      existing.prevY = e.prevY
+      if (e.offX !== undefined) existing.offX = e.offX
+      if (e.offY !== undefined) existing.offY = e.offY
+    } else {
+      blobPhysics.set(e.blobId, { prevX: e.prevX, prevY: e.prevY, offX: e.offX ?? 0, offY: e.offY ?? 0 })
+    }
+  }
+}
+
 /** Remove physics/cache entries for players no longer in the game */
 export function pruneStaleBlobs(activeIds: Set<string>) {
   for (const key of blobPhysics.keys()) {
@@ -371,7 +387,6 @@ function drawBlobTextSea(
 ) {
   const baseFontSize = Math.max(8, Math.min(14, radius * 0.12))
   const diameter = radius * 2
-  const avgChordWidth = radius * 1.4
 
   // Cached font size: only recompute binary search when radius or corpus changes
   const radiusBucket = Math.round(radius / 5)
@@ -380,13 +395,15 @@ function drawBlobTextSea(
   if (cachedFS && cachedFS.radiusBucket === radiusBucket && cachedFS.corpusLen === corpusStr.length) {
     fontSize = cachedFS.fontSize
   } else {
+    // Binary search for the largest font size that fills the circle tightly.
+    // Uses median chord width (diameter * 0.7) and 92% fill target for denser text.
     let lo = 5, hi = baseFontSize
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       const mid = (lo + hi) / 2
       const font = `${mid}px ${UI_FONT_FAMILY}`
       const prepared = getPrepared(corpusStr, font)
-      const { height } = layout(prepared, avgChordWidth, mid * 1.4)
-      if (height > diameter * 0.85) hi = mid
+      const { height } = layout(prepared, diameter * 0.7, mid * 1.4)
+      if (height > diameter * 0.92) hi = mid
       else lo = mid
     }
     fontSize = Math.max(5, Math.min(14, lo))
