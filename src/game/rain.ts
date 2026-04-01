@@ -5,7 +5,7 @@ import { SEA_WORDS as SEED_WORDS } from '@shared/words'
 const FONT = `12px ${UI_FONT_FAMILY}`
 const LINE_HEIGHT = 18
 const MARGIN = 16
-const BLOB_PADDING = 20
+const BLOB_PADDING = 10
 
 type BlobHole = { x: number; y: number; radius: number }
 type WordRect = { x: number; y: number; w: number; h: number }
