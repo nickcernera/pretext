@@ -1,4 +1,4 @@
-import { prepareWithSegments, layoutNextLine, walkLineRanges, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
+import { prepareWithSegments, layoutNextLine, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
 import { UI_FONT_FAMILY, RAIN_COLOR, WORLD_W, WORLD_H } from '@shared/constants'
 import { SEA_WORDS as SEED_WORDS } from '@shared/words'
 
@@ -42,12 +42,12 @@ export class MatrixRain {
     for (const h of this.handles) pool.push(h, h, h)
     for (const b of this.bios) pool.push(...b.split(/\s+/).slice(0, 6))
 
-    // Need enough text to fill the entire world grid
-    // World is 4000px tall, line height 18px = ~222 lines
-    // Average line width ~4000px at 12px font ≈ ~40 words per line
-    // 222 * 40 = ~9000 words needed
+    // Need enough text to fill the entire world grid without wrapping.
+    // World is 4000px tall, line height 18px = ~223 lines.
+    // At 12px monospace ~7px/char, full line ≈ 550 chars ≈ 50 words.
+    // 223 * 50 = ~11k words, use 20k for safety margin.
     const words: string[] = []
-    for (let i = 0; i < 12000; i++) {
+    for (let i = 0; i < 20000; i++) {
       words.push(pool[Math.floor(Math.random() * pool.length)])
     }
     this.corpus = words.join('  ')
@@ -59,32 +59,27 @@ export class MatrixRain {
 
   /**
    * Pre-lay out the entire world grid to cache cursor positions per line.
-   * Uses walkLineRanges (no string allocation) instead of layoutNextLine.
-   * We store the cursor at the START of each line so we can jump to any visible row.
+   * Uses layoutNextLine (same function as rendering) to guarantee cursor
+   * compatibility — walkLineRanges can produce subtly different cursors.
    */
   private precomputeLineCursors() {
     if (!this.prepared || this.fullLayoutDone) return
 
     const totalLines = Math.ceil(WORLD_H / LINE_HEIGHT)
+    const lineWidth = WORLD_W - MARGIN * 2
     this.lineStartCursors = []
 
-    // walkLineRanges iterates all lines without constructing text strings —
-    // we only need the cursor positions for random-access during rendering
-    walkLineRanges(this.prepared, WORLD_W - MARGIN * 2, (line) => {
-      if (this.lineStartCursors.length < totalLines) {
-        this.lineStartCursors.push({ ...line.start })
-      }
-    })
+    let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
 
-    // If corpus was shorter than needed, wrap from beginning to fill remaining rows
-    while (this.lineStartCursors.length < totalLines) {
-      const before = this.lineStartCursors.length
-      walkLineRanges(this.prepared!, WORLD_W - MARGIN * 2, (line) => {
-        if (this.lineStartCursors.length < totalLines) {
-          this.lineStartCursors.push({ ...line.start })
-        }
-      })
-      if (this.lineStartCursors.length === before) break // prevent infinite loop on empty corpus
+    for (let i = 0; i < totalLines; i++) {
+      this.lineStartCursors.push({ ...cursor })
+      const line = layoutNextLine(this.prepared, cursor, lineWidth)
+      if (!line) {
+        // Corpus exhausted — wrap to beginning for remaining lines
+        cursor = { segmentIndex: 0, graphemeIndex: 0 }
+      } else {
+        cursor = line.end
+      }
     }
 
     this.fullLayoutDone = true
@@ -143,6 +138,9 @@ export class MatrixRain {
    * Draw the text sea in WORLD SPACE.
    * Called inside the camera transform — coordinates are world pixels.
    * viewportX/Y/W/H define the visible world region (for culling).
+   *
+   * Each line seeds its cursor from the precomputed cache so blob-induced
+   * reflow on one line cannot cascade to subsequent lines.
    */
   drawWorld(
     ctx: CanvasRenderingContext2D,
@@ -162,10 +160,6 @@ export class MatrixRain {
       this.lineStartCursors.length - 1,
       Math.ceil((viewportY + viewportH) / LINE_HEIGHT) + 1,
     )
-
-    // Flowing cursor: seed once from the precomputed cache on the first visible line,
-    // then carry forward across spans AND across rows for continuous text flow.
-    let cursor: LayoutCursor | null = null
 
     for (let li = firstLine; li <= lastLine; li++) {
       const worldY = li * LINE_HEIGHT
@@ -188,28 +182,31 @@ export class MatrixRain {
         spans = subtractExclusion(spans, rect.x, rect.x + rect.w)
       }
 
-      // Seed cursor from precomputed cache only on the first visible line
-      // (for camera jump recovery); after that it flows naturally
-      if (cursor === null) {
-        cursor = { ...this.lineStartCursors[li] }
-      }
+      // Seed cursor from precomputed cache on EVERY line so reflow on one
+      // line never cascades to subsequent lines
+      let cursor = { ...this.lineStartCursors[li] }
 
       for (const span of spans) {
         // Cull spans entirely outside viewport
         if (span.right < viewportX - 100 || span.left > viewportX + viewportW + 100) {
-          // Still advance the cursor so text stays consistent
+          // Still advance the cursor so text stays consistent within this line
           const skip = layoutNextLine(this.prepared, cursor, span.right - span.left)
-          if (skip) cursor = skip.end
+          if (skip) {
+            cursor = skip.end
+          } else {
+            cursor = { segmentIndex: 0, graphemeIndex: 0 }
+          }
           continue
         }
 
         const maxWidth = span.right - span.left
         if (maxWidth < 30) continue
 
-        const line = layoutNextLine(this.prepared, cursor, maxWidth)
+        let line = layoutNextLine(this.prepared, cursor, maxWidth)
         if (!line) {
           cursor = { segmentIndex: 0, graphemeIndex: 0 }
-          break
+          line = layoutNextLine(this.prepared, cursor, maxWidth)
+          if (!line) break
         }
 
         // Opacity: base + halo near blobs
