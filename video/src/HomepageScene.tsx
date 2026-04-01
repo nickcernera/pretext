@@ -1,5 +1,5 @@
 // video/src/HomepageScene.tsx
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import {
   AbsoluteFill,
   Easing,
@@ -50,7 +50,7 @@ export const HomepageScene: React.FC = () => {
   );
 
   // Draw text sea to canvas
-  useEffect(() => {
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");

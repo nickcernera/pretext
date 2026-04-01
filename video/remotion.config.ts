@@ -9,7 +9,7 @@ import { Config } from "@remotion/cli/config";
 import { enableTailwind } from "@remotion/tailwind-v4";
 import path from "path";
 
-Config.setVideoImageFormat("jpeg");
+Config.setVideoImageFormat("png");
 Config.setOverwriteOutput(true);
 Config.overrideWebpackConfig((config) => {
   config.resolve = config.resolve || {};
