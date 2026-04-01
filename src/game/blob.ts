@@ -309,18 +309,20 @@ export function drawBlob(
     ctx.restore()
   }
 
-  // === Draw center avatar ===
-  const avatarImg = getAvatarImage(avatar)
-  drawAvatar(ctx, x, avatarCY, avatarR, getInitials(handle), color, true, avatarImg)
+  // === Draw center avatar (skip for anonymous/landing blobs) ===
+  if (handle) {
+    const avatarImg = getAvatarImage(avatar)
+    drawAvatar(ctx, x, avatarCY, avatarR, getInitials(handle), color, true, avatarImg)
 
-  // Handle text below avatar
-  const handleY = avatarCY + avatarR + 3
-  ctx.font = `bold ${handleSize}px ${BLOB_FONT_FAMILY}`
-  ctx.textBaseline = 'top'
-  ctx.textAlign = 'center'
-  ctx.fillStyle = color
-  ctx.fillText(handle, x, handleY)
-  ctx.textAlign = 'start'
+    // Handle text below avatar
+    const handleY = avatarCY + avatarR + 3
+    ctx.font = `bold ${handleSize}px ${BLOB_FONT_FAMILY}`
+    ctx.textBaseline = 'top'
+    ctx.textAlign = 'center'
+    ctx.fillStyle = color
+    ctx.fillText(handle, x, handleY)
+    ctx.textAlign = 'start'
+  }
 
   // === Draw victim avatars ===
   for (const vp of victimPos) {
