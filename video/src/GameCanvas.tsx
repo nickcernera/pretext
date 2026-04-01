@@ -175,7 +175,7 @@ function preSimulate(
       const [start, end] = config.slowMoRange;
       if (i >= start && i <= end) {
         const t = (i - start) / (end - start);
-        speedMul = 0.4 + 0.6 * Math.abs(Math.cos(t * Math.PI));
+        speedMul = 0.25 + 0.75 * Math.abs(Math.cos(t * Math.PI));
       }
     }
     sim.step(speedMul / fps);

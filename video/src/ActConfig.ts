@@ -108,5 +108,5 @@ export const ACT_3: ActConfig = {
   events: [
     { frame: 30, type: "split" },
   ],
-  slowMoRange: [25, 45],
+  slowMoRange: [20, 40],
 };
