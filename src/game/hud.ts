@@ -1,3 +1,4 @@
+import { prepareWithSegments, layoutNextLine, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
 import { UI_FONT_FAMILY, BLOB_FONT_FAMILY, RAIN_COLOR, WORLD_W, WORLD_H, MINIMAP_SIZE } from '@shared/constants'
 import { massToRadius, type LeaderboardEntry, type PlayerState } from '@shared/protocol'
 import { buildShareUrl, copyRoomLink } from '../share'
@@ -9,6 +10,7 @@ type KillToast = { victimHandle: string; roomCode: string; time: number; el: HTM
 export class HUD {
   private leaderboard: LeaderboardEntry[] = []
   private killEvents: KillEvent[] = []
+  private killFeedCache = new Map<string, PreparedTextWithSegments>()
   private mass = 0
   private kills = 0
   private roomCode = ''
@@ -70,8 +72,13 @@ export class HUD {
   }
 
   addKillEvent(killer: string, victim: string) {
-    this.killEvents.push({ text: `${killer} devoured ${victim}`, time: performance.now() })
-    if (this.killEvents.length > 6) this.killEvents.shift()
+    const text = `${killer} devoured ${victim}`
+    this.killFeedCache.set(text, prepareWithSegments(text, `11px ${UI_FONT_FAMILY}`))
+    this.killEvents.push({ text, time: performance.now() })
+    if (this.killEvents.length > 6) {
+      const removed = this.killEvents.shift()
+      if (removed) this.killFeedCache.delete(removed.text)
+    }
   }
 
   setupKeyListeners(roomCode: string) {
@@ -271,6 +278,7 @@ export class HUD {
       if (toast.el.parentNode) toast.el.parentNode.removeChild(toast.el)
     }
     this.killToasts = []
+    this.killFeedCache.clear()
   }
 
   draw(ctx: CanvasRenderingContext2D, w: number, h: number, players?: PlayerState[], localPlayerId?: string) {
@@ -299,8 +307,9 @@ export class HUD {
     }
     ctx.textAlign = 'left'
 
-    // Kill feed — bottom left
+    // Kill feed — bottom left, wraps long handles with pretext layout
     const now = performance.now()
+    const feedMaxWidth = Math.min(300, w * 0.4)
     let kfY = h - 20
     for (let i = this.killEvents.length - 1; i >= 0; i--) {
       const ev = this.killEvents[i]
@@ -309,8 +318,28 @@ export class HUD {
       ctx.globalAlpha = Math.max(0, 0.6 - age * 0.08)
       ctx.font = `11px ${UI_FONT_FAMILY}`
       ctx.fillStyle = RAIN_COLOR
-      ctx.fillText(ev.text, 16, kfY)
-      kfY -= 18
+
+      const prepared = this.killFeedCache.get(ev.text)
+      if (prepared) {
+        // Collect lines using pretext layout
+        const lines: string[] = []
+        let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
+        let line = layoutNextLine(prepared, cursor, feedMaxWidth)
+        while (line) {
+          lines.push(line.text)
+          cursor = line.end
+          line = layoutNextLine(prepared, cursor, feedMaxWidth)
+        }
+        // Draw bottom-up (most recent lines at bottom)
+        for (let j = lines.length - 1; j >= 0; j--) {
+          ctx.fillText(lines[j], 16, kfY)
+          kfY -= 14
+        }
+      } else {
+        ctx.fillText(ev.text, 16, kfY)
+        kfY -= 14
+      }
+      kfY -= 4 // gap between events
     }
 
     // Player stats — bottom right (above minimap)
