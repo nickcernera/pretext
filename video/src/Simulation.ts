@@ -305,9 +305,14 @@ export class Simulation {
       this.waypointIndex++;
     }
 
+    // Recompute from/to after potential index increment so the target
+    // position is on the correct (new) segment after a waypoint transition.
+    const curFrom = this.waypoints[this.waypointIndex % this.waypoints.length];
+    const curTo = this.waypoints[(this.waypointIndex + 1) % this.waypoints.length];
+
     const t = this.waypointProgress;
-    const tx = from.x + (to.x - from.x) * t;
-    const ty = from.y + (to.y - from.y) * t;
+    const tx = curFrom.x + (curTo.x - curFrom.x) * t;
+    const ty = curFrom.y + (curTo.y - curFrom.y) * t;
 
     if (cell.vx === 0 && cell.vy === 0) {
       const dx = tx - cell.x;
