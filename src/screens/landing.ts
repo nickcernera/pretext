@@ -4,6 +4,7 @@ import { BLOB_FONT_FAMILY, UI_FONT_FAMILY, BG_COLOR, RAIN_COLOR } from '@shared/
 import { SEA_WORDS } from '@shared/words'
 import { getStoredUser, startXAuth, logout } from '../auth'
 import { cursor as customCursor } from '../game/cursor'
+import { LandingBlobs } from '../game/landing-blobs'
 import { httpFromWs, copyRoomLink, buildShareUrl } from '../share'
 import type { RoomsResponse, RoomInfo } from '@shared/protocol'
 
@@ -64,6 +65,7 @@ export class LandingScreen {
   private activityInterval: ReturnType<typeof setInterval> | null = null
   private titleEl: HTMLHeadingElement | null = null
   private lastSW = 0
+  private landingBlobs = new LandingBlobs()
 
   constructor(canvas: HTMLCanvasElement, serverUrl: string) {
     this.canvas = canvas
@@ -116,8 +118,13 @@ export class LandingScreen {
 
   private startBackground() {
     this.lastTime = performance.now()
+    const sw = window.innerWidth
+    const sh = window.innerHeight
+    this.landingBlobs.init(sw, sh)
+
     const loop = () => {
       const now = performance.now()
+      const dt = Math.min((now - this.lastTime) / 1000, 0.1)
       this.lastTime = now
 
       const sw = window.innerWidth
@@ -129,10 +136,17 @@ export class LandingScreen {
         const panelW = Math.min(620, sw - 80) - 128
         const newSize = fitHeadlineSize('pretext arena', panelW)
         this.titleEl.style.fontSize = `${newSize}px`
+        this.landingBlobs.resize(sw, sh)
       }
+
+      // Feed actual UI rects so blobs know where the boundary is
+      const uiRects = this.getUIExclusionRects()
+      this.landingBlobs.setUIExclusionRects(uiRects.map(r => ({ x: r.x, y: r.y, w: r.w, h: r.h })))
+      this.landingBlobs.update(dt)
 
       drawBackground(this.ctx, sw, sh)
       this.drawSea(this.ctx, sw, sh)
+      this.landingBlobs.draw(this.ctx, dt)
 
       this.rafId = requestAnimationFrame(loop)
     }
@@ -172,6 +186,17 @@ export class LandingScreen {
         }
       }
 
+      // Exclude blob areas (circular) — tight to visual edge
+      for (const blob of this.landingBlobs.getExclusions()) {
+        const blobPad = blob.radius + 10
+        const midY = (lineTop + lineBottom) / 2
+        const bdy = midY - blob.y
+        if (Math.abs(bdy) < blobPad) {
+          const halfW = Math.sqrt(blobPad * blobPad - bdy * bdy)
+          spans = excludeRange(spans, blob.x - halfW, blob.x + halfW)
+        }
+      }
+
       // Exclude area around cursor (circle)
       const cursorR = 30
       const midLineY = (lineTop + lineBottom) / 2
@@ -196,8 +221,20 @@ export class LandingScreen {
         const midX = (span.left + span.right) / 2
         const midY = (lineTop + lineBottom) / 2
 
-        // Brighter near UI exclusions — min distance between span rect and each exclusion rect
+        // Brighter near blobs
         let alpha = 0.08
+        for (const blob of this.landingBlobs.getExclusions()) {
+          const dx = midX - blob.x
+          const dy = midY - blob.y
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          const haloZone = blob.radius + 100
+          if (dist < haloZone) {
+            const proximity = 1 - dist / haloZone
+            alpha = Math.max(alpha, 0.08 + proximity * 0.25)
+          }
+        }
+
+        // Brighter near UI exclusions — min distance between span rect and each exclusion rect
         for (const exclusion of exclusions) {
           const dx = Math.max(0, exclusion.x - span.right, span.left - (exclusion.x + exclusion.w))
           const dy = Math.max(0, exclusion.y - lineBottom, lineTop - (exclusion.y + exclusion.h))
