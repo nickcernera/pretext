@@ -163,6 +163,10 @@ export class MatrixRain {
       Math.ceil((viewportY + viewportH) / LINE_HEIGHT) + 1,
     )
 
+    // Flowing cursor: seed once from the precomputed cache on the first visible line,
+    // then carry forward across spans AND across rows for continuous text flow.
+    let cursor: LayoutCursor | null = null
+
     for (let li = firstLine; li <= lastLine; li++) {
       const worldY = li * LINE_HEIGHT
       const lineTop = worldY
@@ -184,9 +188,11 @@ export class MatrixRain {
         spans = subtractExclusion(spans, rect.x, rect.x + rect.w)
       }
 
-      // Lay out text across available spans
-      // Use the cached cursor for this line as starting point
-      let cursor = { ...this.lineStartCursors[li] }
+      // Seed cursor from precomputed cache only on the first visible line
+      // (for camera jump recovery); after that it flows naturally
+      if (cursor === null) {
+        cursor = { ...this.lineStartCursors[li] }
+      }
 
       for (const span of spans) {
         // Cull spans entirely outside viewport
