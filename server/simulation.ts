@@ -19,7 +19,7 @@ import {
 import { massToRadius, pelletRadius } from '../shared/protocol'
 import type { ServerMessage, PlayerState, PelletState, CellState } from '../shared/protocol'
 import type { Room, ServerPlayer, ServerCell } from './room'
-import { playerTotalMass, playerCenterOfMass } from './room'
+import { playerTotalMass, playerMassAndCenter } from './room'
 import type { RoomManager } from './room'
 import { SpatialGrid } from './spatial'
 import { tickBots, fillBots, cleanupBotState } from './bot'
@@ -69,6 +69,8 @@ export class Simulation {
   private roomManager: RoomManager
   private stats: StatsTracker
   private lastPelletIds = new Map<string, Set<number>>() // roomCode → pellet IDs last broadcast
+  private grid = new SpatialGrid()
+  private entries: CellEntry[] = []
 
   constructor(roomManager: RoomManager, stats: StatsTracker) {
     this.roomManager = roomManager
@@ -126,15 +128,15 @@ export class Simulation {
 
     const players = Array.from(room.players.values())
 
-    // 2. Build spatial grid with individual cells
-    const grid = new SpatialGrid()
-    const entryById = new Map<number, CellEntry>()
+    // 2. Build spatial grid with individual cells (reuse grid + array to reduce GC)
+    this.grid.clear()
+    this.entries.length = 0
     let idx = 0
     for (const p of players) {
       for (const c of p.cells) {
         const r = massToRadius(c.mass)
-        grid.insert(idx, c.x, c.y, r)
-        entryById.set(idx, { playerId: p.id, cellId: c.cellId, cell: c, player: p })
+        this.grid.insert(idx, c.x, c.y, r)
+        this.entries.push({ playerId: p.id, cellId: c.cellId, cell: c, player: p })
         idx++
       }
     }
@@ -216,26 +218,22 @@ export class Simulation {
     }
 
     // 5. Cell-vs-cell eating (inter-player)
-    const eatenCells = new Set<string>() // "playerId:cellId"
+    const eatenCells = new Set<number>() // grid indices of eaten cells
     const deadPlayers = new Set<string>()
 
-    const cellKey = (playerId: string, cellId: number) => `${playerId}:${cellId}`
-
     for (let i = 0; i < idx; i++) {
-      const a = entryById.get(i)
-      if (!a) continue
-      if (eatenCells.has(cellKey(a.playerId, a.cellId))) continue
+      if (eatenCells.has(i)) continue
+      const a = this.entries[i]
       if (deadPlayers.has(a.playerId)) continue
 
       const ra = massToRadius(a.cell.mass)
-      const nearby = grid.query(a.cell.x, a.cell.y, ra + 200)
+      const nearby = this.grid.query(a.cell.x, a.cell.y, ra + 200)
 
       for (const ni of nearby) {
         if (ni === i) continue
-        const b = entryById.get(ni)
-        if (!b) continue
+        if (eatenCells.has(ni)) continue
+        const b = this.entries[ni]
         if (b.playerId === a.playerId) continue // siblings never eat each other
-        if (eatenCells.has(cellKey(b.playerId, b.cellId))) continue
         if (deadPlayers.has(b.playerId)) continue
 
         // Check eat ratio between cells
@@ -259,7 +257,7 @@ export class Simulation {
         if (dist < killerR * EAT_OVERLAP + victimR * (1 - EAT_OVERLAP)) {
           // Eat the victim cell
           killer.cell.mass += victim.cell.mass
-          eatenCells.add(cellKey(victim.playerId, victim.cellId))
+          eatenCells.add(killer === a ? ni : i)
 
           // Remove victim cell from their player
           const victimPlayer = victim.player
@@ -328,25 +326,30 @@ export class Simulation {
       room.removePlayer(id)
     }
 
-    // 6. Cell-vs-pellet eating
+    // 6. Cell-vs-pellet eating (mark-and-sweep: one filter at end)
+    const eatenPelletIds = new Set<number>()
     for (const p of players) {
       if (deadPlayers.has(p.id)) continue
       for (const c of p.cells) {
         const cr = massToRadius(c.mass)
-        room.pellets = room.pellets.filter((pellet) => {
+        for (const pellet of room.pellets) {
+          if (eatenPelletIds.has(pellet.id)) continue
           const dx = c.x - pellet.x
           const dy = c.y - pellet.y
-          const dist = Math.sqrt(dx * dx + dy * dy)
-          if (dist < cr + pelletRadius(pellet.word)) {
+          const threshold = cr + pelletRadius(pellet.word)
+          if (dx * dx + dy * dy < threshold * threshold) {
             c.mass += pellet.word.length * PELLET_MASS_PER_CHAR
             if (p.text.length < 500) p.text += ' ' + pellet.word
-            const totalMass = playerTotalMass(p)
-            if (totalMass > p.peakMass) p.peakMass = totalMass
-            return false
+            eatenPelletIds.add(pellet.id)
           }
-          return true
-        })
+        }
       }
+      // Update peak mass once per player (not per pellet eaten)
+      const totalMass = playerTotalMass(p)
+      if (totalMass > p.peakMass) p.peakMass = totalMass
+    }
+    if (eatenPelletIds.size > 0) {
+      room.pellets = room.pellets.filter(p => !eatenPelletIds.has(p.id))
     }
 
     // 7. Respawn pellets
@@ -365,13 +368,12 @@ export class Simulation {
 
   private broadcastState(room: Room) {
     const players: PlayerState[] = Array.from(room.players.values()).map((p) => {
-      const com = playerCenterOfMass(p)
-      const totalMass = playerTotalMass(p)
+      const { totalMass, x: comX, y: comY } = playerMassAndCenter(p)
       return {
         id: p.id,
         handle: p.handle,
-        x: Math.round(com.x),
-        y: Math.round(com.y),
+        x: Math.round(comX),
+        y: Math.round(comY),
         mass: Math.round(totalMass),
         color: p.color,
         avatar: p.avatar,

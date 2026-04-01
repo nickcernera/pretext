@@ -58,6 +58,18 @@ export function playerCenterOfMass(p: ServerPlayer): { x: number; y: number } {
   return { x: wx / totalMass, y: wy / totalMass }
 }
 
+/** Combined mass + center of mass in a single pass (avoids iterating cells twice) */
+export function playerMassAndCenter(p: ServerPlayer): { totalMass: number; x: number; y: number } {
+  let totalMass = 0, wx = 0, wy = 0
+  for (const c of p.cells) {
+    wx += c.x * c.mass
+    wy += c.y * c.mass
+    totalMass += c.mass
+  }
+  if (totalMass === 0) return { totalMass: 0, x: 0, y: 0 }
+  return { totalMass, x: wx / totalMass, y: wy / totalMass }
+}
+
 export type WsData = {
   playerId: string
   roomCode: string
@@ -174,9 +186,10 @@ export class Room {
 
   getLeaderboard(): LeaderboardEntry[] {
     return Array.from(this.players.values())
-      .sort((a, b) => playerTotalMass(b) - playerTotalMass(a))
+      .map(p => ({ p, mass: playerTotalMass(p) }))
+      .sort((a, b) => b.mass - a.mass)
       .slice(0, 10)
-      .map((p) => ({ handle: p.handle, mass: Math.round(playerTotalMass(p)), kills: p.kills }))
+      .map(({ p, mass }) => ({ handle: p.handle, mass: Math.round(mass), kills: p.kills }))
   }
 
   shouldSnapshot(): boolean {

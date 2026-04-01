@@ -53,6 +53,8 @@ export function fillBots(room: Room) {
 const WANDER_INTERVAL = 3000 // ms between wander target changes
 const FLEE_RANGE = 350
 const CHASE_RANGE = 400
+const FLEE_RANGE_SQ = FLEE_RANGE * FLEE_RANGE
+const CHASE_RANGE_SQ = CHASE_RANGE * CHASE_RANGE
 
 // Track last wander time per bot
 const lastWanderChange: Map<string, number> = new Map()
@@ -81,27 +83,27 @@ export function tickBots(room: Room, dt: number) {
     for (const other of players) {
       if (other.id === bot.id) continue
 
-      // Check each cell of the other player
+      // Check each cell of the other player (squared distances to avoid sqrt)
       for (const cell of other.cells) {
         const dx = cell.x - botX
         const dy = cell.y - botY
-        const dist = Math.sqrt(dx * dx + dy * dy)
+        const dist2 = dx * dx + dy * dy
 
         // Flee from any cell that can eat us
-        if (cell.mass > botMass * EAT_RATIO && dist < FLEE_RANGE) {
-          if (dist < closestBiggerDist) {
+        if (cell.mass > botMass * EAT_RATIO && dist2 < FLEE_RANGE_SQ) {
+          if (dist2 < closestBiggerDist) {
             closestBiggerX = cell.x
             closestBiggerY = cell.y
-            closestBiggerDist = dist
+            closestBiggerDist = dist2
             fleeing = true
           }
         }
         // Chase any cell we can eat
-        else if (botMass > cell.mass * EAT_RATIO && dist < CHASE_RANGE) {
-          if (dist < closestSmallerDist) {
+        else if (botMass > cell.mass * EAT_RATIO && dist2 < CHASE_RANGE_SQ) {
+          if (dist2 < closestSmallerDist) {
             closestSmallerX = cell.x
             closestSmallerY = cell.y
-            closestSmallerDist = dist
+            closestSmallerDist = dist2
             chasing = true
           }
         }

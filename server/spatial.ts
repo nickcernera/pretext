@@ -13,7 +13,9 @@ export class SpatialGrid {
   }
 
   clear() {
-    this.cells.clear()
+    for (const set of this.cells.values()) {
+      set.clear()
+    }
   }
 
   insert(id: number, x: number, y: number, radius: number) {
