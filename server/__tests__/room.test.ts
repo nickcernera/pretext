@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'bun:test'
 import { Room, RoomManager, playerTotalMass } from '../room'
+import { PELLET_COUNT } from '@shared/constants'
 
 describe('Room', () => {
   test('addPlayer and removePlayer', () => {
@@ -29,12 +30,12 @@ describe('Room', () => {
   test('respawnPellets fills deficit', () => {
     const room = new Room('pellet-room', true)
     const initialCount = room.pellets.length
-    expect(initialCount).toBe(150)
+    expect(initialCount).toBe(PELLET_COUNT)
 
     // Remove some pellets
     room.pellets = room.pellets.slice(0, 100)
     room.respawnPellets()
-    expect(room.pellets.length).toBe(150)
+    expect(room.pellets.length).toBe(PELLET_COUNT)
   })
 })
 
