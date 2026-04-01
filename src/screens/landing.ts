@@ -85,7 +85,7 @@ export class LandingScreen {
 
   private buildSeaCorpus() {
     const words: string[] = []
-    for (let i = 0; i < 5000; i++) {
+    for (let i = 0; i < 10000; i++) {
       words.push(SEA_WORDS[Math.floor(Math.random() * SEA_WORDS.length)])
     }
     this.seaPrepared = prepareWithSegments(words.join('  '), SEA_FONT)
@@ -126,7 +126,7 @@ export class LandingScreen {
       // Refit headline when viewport width changes noticeably
       if (this.titleEl && Math.abs(sw - this.lastSW) > 10) {
         this.lastSW = sw
-        const panelW = Math.min(560, sw - 80) - 80
+        const panelW = Math.min(620, sw - 80) - 128
         const newSize = fitHeadlineSize('pretext arena', panelW)
         this.titleEl.style.fontSize = `${newSize}px`
       }
@@ -185,10 +185,12 @@ export class LandingScreen {
         const maxWidth = span.right - span.left
         if (maxWidth < 30) continue
 
-        const line = layoutNextLine(this.seaPrepared, cursor, maxWidth)
+        let line = layoutNextLine(this.seaPrepared, cursor, maxWidth)
         if (!line) {
+          // Corpus exhausted — wrap to beginning and retry so no gap appears
           cursor = { segmentIndex: 0, graphemeIndex: 0 }
-          break
+          line = layoutNextLine(this.seaPrepared, cursor, maxWidth)
+          if (!line) break
         }
 
         const midX = (span.left + span.right) / 2
@@ -259,12 +261,12 @@ export class LandingScreen {
     this.panel = panel
     panel.style.cssText = `
       display: flex; flex-direction: column; align-items: center;
-      pointer-events: auto; padding: 32px 40px; border-radius: 8px;
-      max-width: 560px; width: 100%;
+      pointer-events: auto; padding: 32px 64px; border-radius: 8px;
+      max-width: 620px; width: 100%;
     `
 
     // Title — adaptively sized to fill panel width without breaking words
-    const panelContentW = Math.min(560, window.innerWidth - 80) - 80
+    const panelContentW = Math.min(620, window.innerWidth - 80) - 128
     const titleSize = fitHeadlineSize('pretext arena', panelContentW)
     const title = document.createElement('h1')
     title.textContent = 'pretext arena'
