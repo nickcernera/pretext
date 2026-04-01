@@ -4,6 +4,7 @@ import {
 } from '@shared/constants'
 import { pelletRadius } from '@shared/protocol'
 import type { PelletState } from '@shared/protocol'
+import { prepareWithSegments, walkLineRanges } from '@chenglou/pretext'
 
 type RenderedPellet = PelletState & {
   measuredWidth: number
@@ -21,9 +22,6 @@ type CellInfo = { x: number; y: number; radius: number }
 const FONT = `bold ${PELLET_FONT_SIZE}px ${BLOB_FONT_FAMILY}`
 const PELLET_COLOR = '#80ffa0'
 
-// Reusable pool for pellet rects — avoids per-frame array allocation
-const rectsPool: PelletRect[] = []
-
 export class PelletRenderer {
   private pellets: RenderedPellet[] = []
   private widthCache = new Map<string, number>()
@@ -34,44 +32,27 @@ export class PelletRenderer {
   }
 
   setPellets(pellets: PelletState[]) {
-    // Resize to match incoming length — reuse existing objects in-place
-    while (this.pellets.length > pellets.length) this.pellets.pop()
-    for (let i = 0; i < pellets.length; i++) {
-      const p = pellets[i]
-      if (i < this.pellets.length) {
-        this.pellets[i].id = p.id
-        this.pellets[i].x = p.x
-        this.pellets[i].y = p.y
-        this.pellets[i].word = p.word
-        this.pellets[i].measuredWidth = this.widthCache.get(p.word) ?? 0
-      } else {
-        this.pellets.push({ ...p, measuredWidth: this.widthCache.get(p.word) ?? 0 })
+    this.pellets = pellets.map(p => {
+      let w = this.widthCache.get(p.word)
+      if (w === undefined) {
+        const prepared = prepareWithSegments(p.word, FONT)
+        w = 0
+        walkLineRanges(prepared, 100_000, line => { w = line.width })
+        this.widthCache.set(p.word, w)
       }
-    }
+      return { ...p, measuredWidth: w }
+    })
   }
 
   /** Get bounding rects in world space for rain exclusion */
   getRects(): PelletRect[] {
     const h = PELLET_FONT_SIZE * 1.4
-    while (rectsPool.length > this.pellets.length) rectsPool.pop()
-    for (let i = 0; i < this.pellets.length; i++) {
-      const p = this.pellets[i]
-      if (i < rectsPool.length) {
-        rectsPool[i].x = p.x - p.measuredWidth / 2 - 6
-        rectsPool[i].y = p.y - h / 2 - 4
-        rectsPool[i].w = p.measuredWidth + 12
-        rectsPool[i].h = h + 8
-      } else {
-        rectsPool.push({
-          x: p.x - p.measuredWidth / 2 - 6,
-          y: p.y - h / 2 - 4,
-          w: p.measuredWidth + 12,
-          h: h + 8,
-        })
-      }
-    }
-    rectsPool.length = this.pellets.length
-    return rectsPool
+    return this.pellets.map(p => ({
+      x: p.x - p.measuredWidth / 2 - 6,
+      y: p.y - h / 2 - 4,
+      w: p.measuredWidth + 12,
+      h: h + 8,
+    }))
   }
 
   draw(ctx: CanvasRenderingContext2D) {
@@ -79,11 +60,6 @@ export class PelletRenderer {
     ctx.textBaseline = 'middle'
 
     for (const p of this.pellets) {
-      if (!p.measuredWidth) {
-        p.measuredWidth = ctx.measureText(p.word).width
-        this.widthCache.set(p.word, p.measuredWidth)
-      }
-
       // Find nearest local cell for magnetism + glow
       let nearDist = Infinity
       let nearCX = 0
