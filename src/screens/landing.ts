@@ -1,4 +1,4 @@
-import { prepareWithSegments, layoutNextLine, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
+import { prepareWithSegments, layoutNextLine, walkLineRanges, type PreparedTextWithSegments, type LayoutCursor } from '@chenglou/pretext'
 import { drawBackground } from '../game/background'
 import { BLOB_FONT_FAMILY, UI_FONT_FAMILY, BG_COLOR, RAIN_COLOR } from '@shared/constants'
 import { SEA_WORDS } from '@shared/words'
@@ -9,6 +9,26 @@ import type { RoomsResponse, RoomInfo } from '@shared/protocol'
 
 const SEA_FONT = `12px ${UI_FONT_FAMILY}`
 const SEA_LINE_HEIGHT = 18
+
+function headlineBreaksWord(prepared: PreparedTextWithSegments, maxWidth: number): boolean {
+  let breaks = false
+  walkLineRanges(prepared, maxWidth, line => {
+    if (line.end.graphemeIndex !== 0) breaks = true
+  })
+  return breaks
+}
+
+function fitHeadlineSize(text: string, maxWidth: number): number {
+  let lo = 24, hi = Math.min(120, Math.floor(maxWidth * 0.18)), best = lo
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2)
+    const font = `700 ${mid}px ${BLOB_FONT_FAMILY}`
+    const prepared = prepareWithSegments(text, font)
+    if (!headlineBreaksWord(prepared, maxWidth)) { best = mid; lo = mid + 1 }
+    else hi = mid - 1
+  }
+  return best
+}
 
 type Span = { left: number; right: number; align: 'left' | 'right' }
 
@@ -42,6 +62,8 @@ export class LandingScreen {
   private seaPrepared: PreparedTextWithSegments | null = null
   private serverUrl: string
   private activityInterval: ReturnType<typeof setInterval> | null = null
+  private titleEl: HTMLHeadingElement | null = null
+  private lastSW = 0
 
   constructor(canvas: HTMLCanvasElement, serverUrl: string) {
     this.canvas = canvas
@@ -100,6 +122,14 @@ export class LandingScreen {
 
       const sw = window.innerWidth
       const sh = window.innerHeight
+
+      // Refit headline when viewport width changes noticeably
+      if (this.titleEl && Math.abs(sw - this.lastSW) > 10) {
+        this.lastSW = sw
+        const panelW = Math.min(560, sw - 80) - 80
+        const newSize = fitHeadlineSize('pretext arena', panelW)
+        this.titleEl.style.fontSize = `${newSize}px`
+      }
 
       drawBackground(this.ctx, sw, sh)
       this.drawSea(this.ctx, sw, sh)
@@ -233,14 +263,18 @@ export class LandingScreen {
       max-width: 560px; width: 100%;
     `
 
-    // Title
+    // Title — adaptively sized to fill panel width without breaking words
+    const panelContentW = Math.min(560, window.innerWidth - 80) - 80
+    const titleSize = fitHeadlineSize('pretext arena', panelContentW)
     const title = document.createElement('h1')
     title.textContent = 'pretext arena'
     title.style.cssText = `
-      font-family: ${BLOB_FONT_FAMILY}; font-size: 64px; font-weight: 700;
+      font-family: ${BLOB_FONT_FAMILY}; font-size: ${titleSize}px; font-weight: 700;
       color: #d0ffe0; margin: 0 0 4px 0; letter-spacing: -2px;
       white-space: nowrap;
     `
+    this.titleEl = title
+    this.lastSW = window.innerWidth
     panel.appendChild(title)
 
     // Tagline
